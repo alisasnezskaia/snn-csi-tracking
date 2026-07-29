@@ -1,0 +1,98 @@
+Loading 50ms captures, T_WIN=64, STRIDE=32, USE_3D=True, USE_PHASE=True, SMOOTHNESS_WEIGHT=1.0...
+Loading cached dataset from /home/newuser/Downloads/snn-csi-tracking/data/processed/presence_position_perframe_ampphase_3d_50ms_w64_s32_X.npy
+X=(1796, 7, 1024, 64), pos=(1796, 64, 3), 50 trials (0.0s)
+split: train=1248 val=298 test=250 windows
+presence rate -- train: 0.62, val: 0.61, test: 0.57
+pos_weight = 0.622
+
+Training on cuda for 60 epochs...
+/home/newuser/Downloads/snn-csi-tracking/src/snn_csi_tracking/data/dataset.py:64: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /__w/pytorch/pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  window_t = torch.as_tensor(window, dtype=torch.float32)
+/home/newuser/Downloads/snn-csi-tracking/src/snn_csi_tracking/data/dataset.py:64: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /__w/pytorch/pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  window_t = torch.as_tensor(window, dtype=torch.float32)
+/home/newuser/Downloads/snn-csi-tracking/src/snn_csi_tracking/data/dataset.py:64: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /__w/pytorch/pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  window_t = torch.as_tensor(window, dtype=torch.float32)
+/home/newuser/Downloads/snn-csi-tracking/src/snn_csi_tracking/data/dataset.py:64: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /__w/pytorch/pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  window_t = torch.as_tensor(window, dtype=torch.float32)
+/home/newuser/Downloads/snn-csi-tracking/src/snn_csi_tracking/data/dataset.py:64: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /__w/pytorch/pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  window_t = torch.as_tensor(window, dtype=torch.float32)
+/home/newuser/Downloads/snn-csi-tracking/src/snn_csi_tracking/data/dataset.py:64: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /__w/pytorch/pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  window_t = torch.as_tensor(window, dtype=torch.float32)
+/home/newuser/Downloads/snn-csi-tracking/src/snn_csi_tracking/data/dataset.py:64: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /__w/pytorch/pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  window_t = torch.as_tensor(window, dtype=torch.float32)
+/home/newuser/Downloads/snn-csi-tracking/src/snn_csi_tracking/data/dataset.py:64: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /__w/pytorch/pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  window_t = torch.as_tensor(window, dtype=torch.float32)
+epoch  1/60  train_loss=1.03469  val_presence_acc=0.440  val_pos_err=0.4484  (4.0s)  <- best so far
+epoch  2/60  train_loss=0.71149  val_presence_acc=0.681  val_pos_err=0.3990  (3.2s)  <- best so far
+epoch  3/60  train_loss=0.66431  val_presence_acc=0.754  val_pos_err=0.3995  (3.2s)  <- best so far
+epoch  4/60  train_loss=0.62169  val_presence_acc=0.703  val_pos_err=0.3981  (3.2s)  <- best so far
+epoch  5/60  train_loss=0.57809  val_presence_acc=0.737  val_pos_err=0.3978  (3.1s)  <- best so far
+epoch  6/60  train_loss=0.54682  val_presence_acc=0.751  val_pos_err=0.3907  (3.2s)  <- best so far
+epoch  7/60  train_loss=0.52440  val_presence_acc=0.747  val_pos_err=0.3876  (3.2s)  <- best so far
+epoch  8/60  train_loss=0.51000  val_presence_acc=0.744  val_pos_err=0.3888  (3.2s)
+epoch  9/60  train_loss=0.49744  val_presence_acc=0.788  val_pos_err=0.3831  (3.2s)  <- best so far
+epoch 10/60  train_loss=0.47781  val_presence_acc=0.739  val_pos_err=0.3820  (3.2s)  <- best so far
+epoch 11/60  train_loss=0.46500  val_presence_acc=0.792  val_pos_err=0.3776  (3.2s)  <- best so far
+epoch 12/60  train_loss=0.44390  val_presence_acc=0.800  val_pos_err=0.3701  (3.2s)  <- best so far
+epoch 13/60  train_loss=0.43466  val_presence_acc=0.802  val_pos_err=0.3712  (3.1s)
+epoch 14/60  train_loss=0.42765  val_presence_acc=0.802  val_pos_err=0.3655  (3.2s)
+epoch 15/60  train_loss=0.41854  val_presence_acc=0.823  val_pos_err=0.3677  (3.2s)  <- best so far
+epoch 16/60  train_loss=0.40211  val_presence_acc=0.827  val_pos_err=0.3586  (3.2s)  <- best so far
+epoch 17/60  train_loss=0.39291  val_presence_acc=0.820  val_pos_err=0.3604  (3.2s)
+epoch 18/60  train_loss=0.38392  val_presence_acc=0.810  val_pos_err=0.3565  (3.2s)  <- best so far
+epoch 19/60  train_loss=0.37533  val_presence_acc=0.830  val_pos_err=0.3503  (3.2s)
+epoch 20/60  train_loss=0.37303  val_presence_acc=0.836  val_pos_err=0.3491  (3.2s)
+epoch 21/60  train_loss=0.35994  val_presence_acc=0.817  val_pos_err=0.3517  (3.1s)  <- best so far
+epoch 22/60  train_loss=0.35310  val_presence_acc=0.837  val_pos_err=0.3428  (3.2s)  <- best so far
+epoch 23/60  train_loss=0.35263  val_presence_acc=0.845  val_pos_err=0.3387  (3.1s)  <- best so far
+epoch 24/60  train_loss=0.34369  val_presence_acc=0.793  val_pos_err=0.3376  (3.2s)
+epoch 25/60  train_loss=0.33661  val_presence_acc=0.849  val_pos_err=0.3363  (3.2s)
+epoch 26/60  train_loss=0.33331  val_presence_acc=0.838  val_pos_err=0.3367  (3.2s)
+epoch 27/60  train_loss=0.33463  val_presence_acc=0.802  val_pos_err=0.3354  (3.2s)
+epoch 28/60  train_loss=0.32806  val_presence_acc=0.846  val_pos_err=0.3321  (3.2s)  <- best so far
+epoch 29/60  train_loss=0.32366  val_presence_acc=0.823  val_pos_err=0.3362  (3.2s)
+epoch 30/60  train_loss=0.32010  val_presence_acc=0.850  val_pos_err=0.3308  (3.2s)
+epoch 31/60  train_loss=0.30884  val_presence_acc=0.816  val_pos_err=0.3414  (3.2s)
+epoch 32/60  train_loss=0.30937  val_presence_acc=0.796  val_pos_err=0.3326  (3.2s)
+epoch 33/60  train_loss=0.30881  val_presence_acc=0.851  val_pos_err=0.3300  (3.2s)
+epoch 34/60  train_loss=0.30288  val_presence_acc=0.844  val_pos_err=0.3253  (3.2s)
+epoch 35/60  train_loss=0.29055  val_presence_acc=0.821  val_pos_err=0.3238  (3.2s)
+epoch 36/60  train_loss=0.29236  val_presence_acc=0.777  val_pos_err=0.3350  (3.2s)
+epoch 37/60  train_loss=0.31165  val_presence_acc=0.776  val_pos_err=0.3282  (3.2s)
+epoch 38/60  train_loss=0.29110  val_presence_acc=0.836  val_pos_err=0.3256  (3.2s)
+epoch 39/60  train_loss=0.28037  val_presence_acc=0.836  val_pos_err=0.3187  (3.2s)
+epoch 40/60  train_loss=0.27198  val_presence_acc=0.833  val_pos_err=0.3205  (3.2s)
+epoch 41/60  train_loss=0.27786  val_presence_acc=0.826  val_pos_err=0.3179  (3.2s)
+epoch 42/60  train_loss=0.27727  val_presence_acc=0.848  val_pos_err=0.3370  (3.2s)
+epoch 43/60  train_loss=0.26703  val_presence_acc=0.822  val_pos_err=0.3197  (3.1s)
+epoch 44/60  train_loss=0.27053  val_presence_acc=0.858  val_pos_err=0.3174  (3.2s)
+epoch 45/60  train_loss=0.25795  val_presence_acc=0.849  val_pos_err=0.3192  (3.2s)
+epoch 46/60  train_loss=0.25562  val_presence_acc=0.850  val_pos_err=0.3221  (3.2s)
+epoch 47/60  train_loss=0.25811  val_presence_acc=0.850  val_pos_err=0.3133  (3.2s)
+epoch 48/60  train_loss=0.25814  val_presence_acc=0.844  val_pos_err=0.3154  (3.2s)
+epoch 49/60  train_loss=0.24887  val_presence_acc=0.858  val_pos_err=0.3155  (3.1s)
+epoch 50/60  train_loss=0.24913  val_presence_acc=0.840  val_pos_err=0.3157  (3.1s)
+epoch 51/60  train_loss=0.24763  val_presence_acc=0.846  val_pos_err=0.3158  (3.2s)
+epoch 52/60  train_loss=0.24092  val_presence_acc=0.843  val_pos_err=0.3235  (3.2s)
+epoch 53/60  train_loss=0.23760  val_presence_acc=0.848  val_pos_err=0.3123  (3.2s)
+epoch 54/60  train_loss=0.23524  val_presence_acc=0.856  val_pos_err=0.3122  (3.2s)
+epoch 55/60  train_loss=0.23683  val_presence_acc=0.838  val_pos_err=0.3172  (3.2s)
+epoch 56/60  train_loss=0.23735  val_presence_acc=0.849  val_pos_err=0.3213  (3.2s)
+epoch 57/60  train_loss=0.23181  val_presence_acc=0.852  val_pos_err=0.3105  (3.2s)
+epoch 58/60  train_loss=0.23230  val_presence_acc=0.826  val_pos_err=0.3103  (3.1s)
+epoch 59/60  train_loss=0.22462  val_presence_acc=0.852  val_pos_err=0.3137  (3.1s)
+epoch 60/60  train_loss=0.22480  val_presence_acc=0.846  val_pos_err=0.3113  (3.1s)
+
+restoring best checkpoint from epoch 28 (val_loss=0.65103)
+/home/newuser/Downloads/snn-csi-tracking/src/snn_csi_tracking/data/dataset.py:64: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /__w/pytorch/pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  window_t = torch.as_tensor(window, dtype=torch.float32)
+/home/newuser/Downloads/snn-csi-tracking/src/snn_csi_tracking/data/dataset.py:64: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /__w/pytorch/pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  window_t = torch.as_tensor(window, dtype=torch.float32)
+/home/newuser/Downloads/snn-csi-tracking/src/snn_csi_tracking/data/dataset.py:64: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /__w/pytorch/pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  window_t = torch.as_tensor(window, dtype=torch.float32)
+/home/newuser/Downloads/snn-csi-tracking/src/snn_csi_tracking/data/dataset.py:64: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /__w/pytorch/pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  window_t = torch.as_tensor(window, dtype=torch.float32)
+
+FINAL TEST (per-frame, 3D): presence_acc=0.815, position_error=0.3356
+total wall time: 192.4s
+saved best checkpoint to /home/newuser/Downloads/snn-csi-tracking/results/models/presence_position_snn_perframe_ampphase_3d_smooth_50ms.pt

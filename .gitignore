@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+data/raw/
+data/raw_captures/
+data/processed/
+data/ground_truth/
+results/videos/
+*.pt
+*.bak_*
+.DS_Store
