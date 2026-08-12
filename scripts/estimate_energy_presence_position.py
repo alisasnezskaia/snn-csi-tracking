@@ -102,16 +102,20 @@ def layer_specs(model) -> list[tuple[str, int, int, str]]:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--use-3d", action="store_true", help="compare the 3D (x,y,z) checkpoints instead of 2D")
+    parser.add_argument("--no-pinhole", dest="pinhole", action="store_false", default=True,
+                         help="only meaningful with --use-3d: match checkpoints trained with --no-pinhole "
+                              "(normalized [0,1] x,y + [0,1]-normalized z, no pinhole deprojection) instead of "
+                              "the real-meters pinhole checkpoints -- picks the right dim_tag/checkpoint path")
     args = parser.parse_args()
     out_dim = 3 if args.use_3d else 2
-    dim_tag = "3d" if args.use_3d else "2d"
+    dim_tag = "2d" if not args.use_3d else ("3d" if args.pinhole else "3dz")
 
     print(f"Loading {RATE_MS}ms captures (same config used to train presence_position_conv models: "
-          f"use_3d={args.use_3d}, use_empty_baseline={USE_EMPTY_BASELINE}, use_motion_magnitude={USE_MOTION_MAGNITUDE}, "
-          f"use_relative_motion={USE_RELATIVE_MOTION})...")
+          f"use_3d={args.use_3d}, pinhole={args.pinhole}, use_empty_baseline={USE_EMPTY_BASELINE}, "
+          f"use_motion_magnitude={USE_MOTION_MAGNITUDE}, use_relative_motion={USE_RELATIVE_MOTION})...")
     X, pos, present, groups, activity_codes = load_or_build_perframe_dataset(
         RAW_ROOT, TRAJECTORY_CACHE_DIR, DEPTH_CACHE_DIR, CACHE_DIR,
-        rate_ms=RATE_MS, t_win=T_WIN, stride=STRIDE, use_3d=args.use_3d, use_phase=USE_PHASE,
+        rate_ms=RATE_MS, t_win=T_WIN, stride=STRIDE, use_3d=args.use_3d, pinhole=args.pinhole, use_phase=USE_PHASE,
         use_empty_baseline=USE_EMPTY_BASELINE, denoise=None, use_motion_magnitude=USE_MOTION_MAGNITUDE,
         amplitude_norm=AMPLITUDE_NORM, use_relative_motion=USE_RELATIVE_MOTION,
     )

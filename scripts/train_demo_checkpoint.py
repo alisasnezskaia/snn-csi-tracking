@@ -1,6 +1,8 @@
 """Train ONE full SNNPresencePositionConvPerFrame checkpoint using the
-current best full-pipeline config (feature=cross_coherence, the best
-leave-activity-out result of the investigation: AUROC=0.608+/-0.028),
+current best full-pipeline config (feature=cross_coherence -- see
+train_presence_position_cv.py for the honest leave-activity-out numbers;
+don't cite a specific number here, the CFAR/adaptive-threshold bug
+confounded earlier "clean" cross_coherence runs, see conversation),
 holding BOTH L and EN-W out of train entirely -- so the spy-overlay video
 rendered from this checkpoint for an L trial and an EN-W trial is a
 genuine "never seen this activity" prediction, not a training-set replay.

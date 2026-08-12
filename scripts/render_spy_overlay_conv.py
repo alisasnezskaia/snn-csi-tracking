@@ -64,7 +64,8 @@ def main():
     parser.add_argument("--use-cross-coherence", action="store_true",
                          help="build the cross-antenna-coherence channel too -- required to match a "
                               "checkpoint trained with feature=cross_coherence (current best full-pipeline "
-                              "config, AUROC=0.608+/-0.028); channel count must match training exactly")
+                              "config -- see train_presence_position_cv.py for the honest leave-activity-out "
+                              "numbers); channel count must match training exactly")
     parser.add_argument("--presence-threshold", type=float, default=PRESENCE_THRESHOLD)
     parser.add_argument("--min-run", type=int, default=DEBOUNCE_MIN_RUN,
                          help="consecutive frames required before presence flips state (debounce strength)")

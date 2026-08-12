@@ -9,3 +9,8 @@ results/videos/
 *.pt
 *.bak_*
 .DS_Store
+*.egg-info/
+.claude/settings.local.json
+_removed_legacy/
+*.egg-info/
+.claude/settings.local.json

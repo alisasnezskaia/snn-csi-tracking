@@ -53,7 +53,7 @@ from snn_csi_tracking.training.train_presence_position_conv import (
     AMPLITUDE_NORM, BATCH_SIZE, CACHE_DIR, CONV_CHANNELS, DELTA_THRESHOLD, DEPTH_CACHE_DIR, HIDDEN_1,
     HIDDEN_2, KERNEL_SIZE, LEARNING_RATE, NUM_EPOCHS, NUM_WORKERS, RATE_MS, RAW_ROOT, SMOOTHNESS_WEIGHT,
     STRIDE, T_WIN, TRAJECTORY_CACHE_DIR, USE_EMPTY_BASELINE, USE_MOTION_MAGNITUDE, USE_PHASE, USE_RELATIVE_MOTION,
-    calibrate_presence_threshold, collect_predictions, evaluate, position_norm_stats, presence_balanced_acc,
+    calibrate_presence_threshold, collect_predictions, evaluate, identity_norm_stats, position_norm_stats, presence_balanced_acc,
     rmse_and_presence_acc, session_key, train_one_epoch,
 )
 
@@ -91,13 +91,17 @@ def presence_auroc(pres_pred: torch.Tensor, pres_gt: torch.Tensor) -> float:
 
 
 def run_fold(model_type: str, X, pos, present, groups, test_activity: str, val_activity: str,
-             encoder_type: str = "perframe", num_static_channels: int = 0, out_dim: int = 2) -> dict:
+             encoder_type: str = "perframe", num_static_channels: int = 0, out_dim: int = 2,
+             pinhole: bool = True) -> dict:
     train_loader, val_loader, test_loader, train_ds = make_fold_loaders(
         X, pos, present, groups, test_activity, val_activity, BATCH_SIZE
     )
     train_presence_rate = train_ds.extra.float().mean().item()
     pos_weight = torch.tensor([(1 - train_presence_rate) / train_presence_rate]).to(DEVICE)
-    mu, sigma = position_norm_stats(train_ds)
+    # position_norm_stats only earns its keep for real-meters pinhole positions (a genuine
+    # BCE-vs-position scale mismatch to fix); 2D and 3D no-pinhole are already [0,1] by
+    # construction, where a data-driven per-fold rescale adds risk (see identity_norm_stats).
+    mu, sigma = position_norm_stats(train_ds) if (out_dim == 3 and pinhole) else identity_norm_stats(out_dim)
 
     if model_type == "snn":
         model = SNNPresencePositionConvPerFrame(
@@ -171,9 +175,21 @@ def main():
                               "vs the condition's person-free reference), unlike every --feature option above which "
                               "is motion-based. Targets the presence-flicker-during-sitting failure mode observed "
                               "on the L activity (person sits still, ground truth=present, motion features go quiet)")
+    parser.add_argument("--use-motion-magnitude", action="store_true",
+                         help="add the raw (absolute) frame-to-frame motion-magnitude channel (see "
+                              "presence_position_dataset.motion_magnitude_feature) -- ORTHOGONAL to --feature "
+                              "(which never touches this flag), so the two compose for a cumulative ablation: "
+                              "e.g. --feature none (amp+phase only) -> --feature none --use-motion-magnitude "
+                              "(+motion magnitude) -> --feature spectral_ratio --use-motion-magnitude "
+                              "(+spectral ratio) -> --feature spectral_and_coherence --use-motion-magnitude "
+                              "(+cross-coherence), a 4-stage cumulative feature ablation")
     parser.add_argument("--use-3d", action="store_true",
                          help="real camera-frame (X,Y,Z) in meters instead of normalized image-plane (x,y) -- "
                               "see camera_geometry.deproject_pixel_to_camera_frame")
+    parser.add_argument("--no-pinhole", dest="pinhole", action="store_false", default=True,
+                         help="only meaningful with --use-3d: skip the pinhole deprojection and keep (x, y) as "
+                              "normalized [0,1] image-plane values with z = metric depth min-max normalized to "
+                              "[0,1] over the whole dataset -- RMSE stays comparable in scale to the 2D-only run")
     args = parser.parse_args()
     out_dim = 3 if args.use_3d else 2
     use_relative_motion = args.feature in ("relative_motion", "both")
@@ -182,11 +198,13 @@ def main():
 
     print(f"Loading dataset (amplitude_norm={AMPLITUDE_NORM}, rate_ms={args.rate_ms}, "
           f"t_win={args.t_win}, stride={args.stride}, window_duration={args.t_win * args.rate_ms / 1000:.2f}s, "
-          f"feature={args.feature}, use_3d={args.use_3d})...")
+          f"feature={args.feature}, use_motion_magnitude={args.use_motion_magnitude}, "
+          f"use_3d={args.use_3d}, pinhole={args.pinhole})...")
     X, pos, present, groups, activity_codes = load_or_build_perframe_dataset(
         RAW_ROOT, TRAJECTORY_CACHE_DIR, DEPTH_CACHE_DIR, CACHE_DIR,
-        rate_ms=args.rate_ms, t_win=args.t_win, stride=args.stride, use_3d=args.use_3d, use_phase=USE_PHASE,
-        use_empty_baseline=USE_EMPTY_BASELINE, denoise=None, use_motion_magnitude=USE_MOTION_MAGNITUDE,
+        rate_ms=args.rate_ms, t_win=args.t_win, stride=args.stride, use_3d=args.use_3d, pinhole=args.pinhole,
+        use_phase=USE_PHASE,
+        use_empty_baseline=USE_EMPTY_BASELINE, denoise=None, use_motion_magnitude=args.use_motion_magnitude,
         amplitude_norm=AMPLITUDE_NORM, use_relative_motion=use_relative_motion, use_spectral_ratio=use_spectral_ratio,
         use_cross_coherence=use_cross_coherence, use_baseline_deviation=args.baseline_deviation,
     )
@@ -198,7 +216,8 @@ def main():
         print(f"\n=== fold {i+1}/{len(ROTATION)}: test={test_activity}, val={val_activity}, model={args.model} ===")
         t0 = time.time()
         result = run_fold(args.model, X, pos, present, groups, test_activity, val_activity, encoder_type=args.encoder,
-                           num_static_channels=NUM_ANTENNAS if args.baseline_deviation else 0, out_dim=out_dim)
+                           num_static_channels=NUM_ANTENNAS if args.baseline_deviation else 0, out_dim=out_dim,
+                           pinhole=args.pinhole)
         results.append(result)
         print(f"  presence_acc={result['presence_acc']:.3f}  auroc={result['auroc']:.3f}  "
               f"rmse={result['rmse']:.4f}  threshold={result['calib_threshold']:.2f}  ({time.time()-t0:.1f}s)")

@@ -30,14 +30,18 @@ measured ~zero benefit earlier and is left at --denoise none by default.
 CIR and a full per-subcarrier delta-rate channel are not included at all --
 both were tried and both overfit.
 
-Two variants, both run from this one script via --use-3d: 2D (normalized
-image-plane x, y) and 3D (real camera-relative X, Y, Z in meters, via
-camera_geometry.deproject_pixel_to_camera_frame + depth_extraction.py's
-metric-indoor depth -- requires the raw per-trial videos, not just cached
-2D trajectories). Run both separately (see the two commands at the bottom
-of this file). Note the 3D RMSE below mixes units across dimensions if
-compared against the 2D run's [0,1]-normalized one -- it's now in meters,
-not the same scale.
+Three variants, all run from this one script via --use-3d / --no-pinhole:
+2D (normalized image-plane x, y), 3D pinhole (real camera-relative X, Y, Z
+in meters, via camera_geometry.deproject_pixel_to_camera_frame +
+depth_extraction.py's metric-indoor depth -- requires the raw per-trial
+videos, not just cached 2D trajectories), and 3D no-pinhole (--use-3d
+--no-pinhole: same normalized [0,1] x, y as the 2D run, with z = metric
+depth min-max normalized to [0,1] over the whole dataset -- see
+presence_position_dataset.build_perframe_dataset's docstring). Run the
+variants separately (see the commands at the bottom of this file). The 3D
+PINHOLE run's RMSE is in meters -- it mixes units if compared against the
+2D run's [0,1]-normalized one. The 3D NO-PINHOLE run's RMSE stays on the
+same [0,1] scale as the 2D run and so is the one actually comparable to it.
 
 --model {snn,ann}: trains either SNNPresencePositionConvPerFrame or its
 non-spiking twin ANNPresencePositionConvPerFrame (models/
@@ -262,6 +266,25 @@ def position_norm_stats(train_ds) -> tuple[torch.Tensor, torch.Tensor]:
     return pos_min, pos_range
 
 
+def identity_norm_stats(out_dim: int) -> tuple[torch.Tensor, torch.Tensor]:
+    """mu=0, sigma=1 -- a no-op stand-in for position_norm_stats, for target
+    spaces that are already on a fixed [0,1] scale BY CONSTRUCTION and so
+    never had the real-meters-vs-BCE scale mismatch position_norm_stats
+    exists to fix: 2D image-plane (x, y), and 3D no-pinhole (x, y stay [0,1]
+    image-plane, z is metric depth min-max normalized to [0,1] over the
+    whole dataset -- see presence_position_dataset.build_perframe_dataset).
+
+    Using position_norm_stats in these cases instead of this would apply a
+    data-driven, PER-FOLD min-max rescale to labels that don't need one --
+    on top of adding no benefit, position_norm_stats' own docstring already
+    flags this as risky specifically under leave-activity-out CV (a
+    held-out fold's positions can sit outside the training folds' observed
+    range, distorting a fold-fitted rescale in ways a fixed [0,1] convention
+    never would). Only the real-meters PINHOLE 3D path should ever call
+    position_norm_stats -- everything else should use this instead."""
+    return torch.zeros(out_dim).to(DEVICE), torch.ones(out_dim).to(DEVICE)
+
+
 def train_one_epoch(model, loader, optimizer, bce_loss, smoothness_weight: float,
                      mu: torch.Tensor, sigma: torch.Tensor) -> float:
     model.train()
@@ -271,7 +294,9 @@ def train_one_epoch(model, loader, optimizer, bce_loss, smoothness_weight: float
         pos_seq = pos_seq.to(DEVICE).permute(1, 0, 2)  # (T, batch, out_dim)
         pres_seq = pres_seq.to(DEVICE).permute(1, 0)  # (T, batch)
         optimizer.zero_grad()
-        pres_pred, pos_pred = model(windows)  # pos_pred is now in normalized (z-scored) space
+        pres_pred, pos_pred = model(windows)  # pos_pred is in the (mu, sigma)-normalized space --
+                                               # min-max via position_norm_stats (pinhole), or a
+                                               # no-op via identity_norm_stats otherwise
         loss_presence = bce_loss(pres_pred, pres_seq).mean()
         pos_seq_norm = (pos_seq - mu) / sigma
         pos_err = ((pos_pred - pos_seq_norm) ** 2).sum(dim=-1)
@@ -312,11 +337,12 @@ def collect_predictions(model, loader):
 
 def rmse_and_presence_acc(pres_pred, pos_pred, pres, pos, threshold: float = 0.5,
                            mu: torch.Tensor | None = None, sigma: torch.Tensor | None = None) -> tuple[float, float]:
-    """pos_pred is in normalized (z-scored) space when mu/sigma are given --
-    un-normalized back to the same real units as `pos` (meters, for the 3D
-    pipeline) before computing RMSE, so the reported number is always a
-    real distance, never the training-time normalized scale (see
-    position_norm_stats)."""
+    """pos_pred is in normalized space when mu/sigma are given (min-max via
+    position_norm_stats for pinhole; unaffected when mu=0,sigma=1 via
+    identity_norm_stats) -- un-normalized back to the same real units as
+    `pos` (meters for pinhole 3D, [0,1] otherwise) before computing RMSE,
+    so the reported number is always a real distance, never an arbitrary
+    training-time-only scale (see position_norm_stats / identity_norm_stats)."""
     presence_acc = ((torch.sigmoid(pres_pred) > threshold).float() == pres).float().mean().item()
     if mu is not None:
         pos_pred = pos_pred * sigma + mu
@@ -419,6 +445,13 @@ def smoothed_predictions(
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--use-3d", action="store_true", help="predict (x, y, z) instead of (x, y)")
+    parser.add_argument("--no-pinhole", dest="pinhole", action="store_false", default=True,
+                         help="only meaningful with --use-3d: skip the pinhole deprojection "
+                              "(camera_geometry.deproject_pixel_to_camera_frame) and instead keep (x, y) as the "
+                              "normalized [0,1] image-plane values (same as the 2D-only run) with z = metric depth "
+                              "min-max normalized to [0,1] over the whole dataset -- all three axes on the same "
+                              "interpretable [0,1] scale, so RMSE means the same kind of thing as the 2D-only "
+                              "run's, unlike the real-meters pinhole path")
     parser.add_argument("--model", choices=["snn", "ann", "lstm"], default="snn",
                          help="snn: SNNPresencePositionConvPerFrame (spiking). ann: its non-spiking twin "
                               "ANNPresencePositionConvPerFrame -- same conv frontend/layer sizes/config, "
@@ -448,17 +481,17 @@ def main():
         sys.exit("--use-3d needs the raw per-trial videos under data/raw_captures/{condition}_{activity}/videos/.")
 
     out_dim = 3 if args.use_3d else 2
-    dim_tag = "3d" if args.use_3d else "2d"
+    dim_tag = "2d" if not args.use_3d else ("3d" if args.pinhole else "3dz")
     model_out = REPO_ROOT / "results" / "models" / f"presence_position_conv_{args.model}_{dim_tag}_{args.denoise}_50ms.pt"
 
     t_start = time.time()
     print(f"Loading {RATE_MS}ms captures, T_WIN={T_WIN}, STRIDE={STRIDE}, use_3d={args.use_3d}, "
-          f"model={args.model}, use_empty_baseline={USE_EMPTY_BASELINE}, amplitude_norm={AMPLITUDE_NORM}, "
-          f"denoise={denoise}, use_motion_magnitude={USE_MOTION_MAGNITUDE}, "
+          f"pinhole={args.pinhole}, model={args.model}, use_empty_baseline={USE_EMPTY_BASELINE}, "
+          f"amplitude_norm={AMPLITUDE_NORM}, denoise={denoise}, use_motion_magnitude={USE_MOTION_MAGNITUDE}, "
           f"use_relative_motion={USE_RELATIVE_MOTION}, seed={args.seed}...")
     X, pos, present, groups, activity_codes = load_or_build_perframe_dataset(
         RAW_ROOT, TRAJECTORY_CACHE_DIR, DEPTH_CACHE_DIR, CACHE_DIR,
-        rate_ms=RATE_MS, t_win=T_WIN, stride=STRIDE, use_3d=args.use_3d, use_phase=USE_PHASE,
+        rate_ms=RATE_MS, t_win=T_WIN, stride=STRIDE, use_3d=args.use_3d, pinhole=args.pinhole, use_phase=USE_PHASE,
         use_empty_baseline=USE_EMPTY_BASELINE, denoise=denoise, use_motion_magnitude=USE_MOTION_MAGNITUDE,
         amplitude_norm=AMPLITUDE_NORM, use_relative_motion=USE_RELATIVE_MOTION,
     )
@@ -471,7 +504,7 @@ def main():
     train_presence_rate = train_ds.extra.float().mean().item()
     pos_weight = torch.tensor([(1 - train_presence_rate) / train_presence_rate]).to(DEVICE)
     print(f"pos_weight (presence) = {pos_weight.item():.3f}")
-    mu, sigma = position_norm_stats(train_ds)
+    mu, sigma = position_norm_stats(train_ds) if (args.use_3d and args.pinhole) else identity_norm_stats(out_dim)
 
     if args.model == "snn":
         model = SNNPresencePositionConvPerFrame(
@@ -587,4 +620,6 @@ if __name__ == "__main__":
 # (run snn + ann -- same data/split/config -- for scripts/estimate_energy_presence_position.py;
 #  --model lstm is a same-protocol accuracy/stability benchmark, not part of that energy comparison)
 #
-# --use-3d, --denoise wavelet/pca also available for comparison.
+# --use-3d (pinhole, real meters), --use-3d --no-pinhole ([0,1] x,y + [0,1]
+# z, comparable scale to the 2D run above), --denoise wavelet/pca also
+# available for comparison.

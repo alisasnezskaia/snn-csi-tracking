@@ -653,6 +653,45 @@ def build_capture_cache(
     return data
 
 
+def _global_depth_range(
+    captures, trajectory_cache_dir: Path, depth_cache_dir: Path, get_landmarker, get_depth_pipe, frame_skip: int,
+) -> tuple[float, float]:
+    """Pre-pass for build_perframe_dataset's use_3d=True, pinhole=False mode:
+    scans every capture's metric depth (meters, Depth-Anything-V2) ONCE to
+    find one dataset-wide (min, max), so z can be min-maxed to the same
+    [0,1] scale everywhere a single fixed scale, not a per-trial one (see
+    resample_depth's docstring: normalizing per trial would make the same
+    real distance map to a different number in every trial, which is
+    exactly what a single dataset-wide range avoids -- the same reasoning
+    that's why (x, y) is already a fixed [0,1] convention, not a per-trial
+    min-max, elsewhere in this pipeline).
+
+    Cheap in practice: both the trajectory and depth extraction it triggers
+    are disk-cached by trial_key (trajectory_extraction.load_or_extract_trajectory,
+    depth_extraction.load_or_extract_depth), so after the first run this is
+    pure cache reads, not recomputation.
+    """
+    from snn_csi_tracking.data.depth_extraction import depth_cache_path, load_or_extract_depth
+
+    depth_min, depth_max = np.inf, -np.inf
+    for capture in captures:
+        trajectory = _resolve_trajectory(capture, trajectory_cache_dir, get_landmarker, frame_skip)
+        if trajectory is None:
+            continue
+        cached = depth_cache_path(depth_cache_dir, capture.trial_key).exists()
+        depth_raw = load_or_extract_depth(
+            capture.video_path, capture.trial_key, trajectory, depth_cache_dir,
+            None if cached else get_depth_pipe(),
+        )
+        if depth_raw is None:
+            continue
+        depth_min = min(depth_min, float(np.nanmin(depth_raw)))
+        depth_max = max(depth_max, float(np.nanmax(depth_raw)))
+    if not np.isfinite(depth_min) or not np.isfinite(depth_max):
+        raise ValueError("no valid depth found across any capture -- can't compute a global z range")
+    return depth_min, depth_max
+
+
 def build_perframe_dataset(
     raw_root: Path,
     trajectory_cache_dir: Path,
@@ -661,6 +700,7 @@ def build_perframe_dataset(
     t_win: int = 64,
     stride: int = 32,
     use_3d: bool = False,
+    pinhole: bool = True,
     frame_skip: int = 2,
     use_phase: bool = True,
     use_empty_baseline: bool = False,
@@ -676,14 +716,22 @@ def build_perframe_dataset(
     X: (NumWindows, NumChannels, NumSubcarriers, t_win) float32 -- see
         compute_features for what NumChannels is (3, 7, or 9)
     pos: (NumWindows, t_win, out_dim) float32 -- per-timestep position,
-        meaningful only where present=1 at that timestep. 2D: (x, y)
-        normalized image-plane. 3D (use_3d=True): real (X, Y, Z) in meters,
-        in the CAMERA's own frame (see
-        camera_geometry.deproject_pixel_to_camera_frame) -- not room/
-        floor-plan coordinates, since that needs a separate camera-pose
-        calibration this pipeline doesn't do (see that function's
-        docstring for why that's a legitimate simplification here, not a
-        gap).
+        meaningful only where present=1 at that timestep.
+        use_3d=False: (x, y) normalized image-plane, out_dim=2.
+        use_3d=True, pinhole=True: real (X, Y, Z) in meters, in the
+            CAMERA's own frame (see
+            camera_geometry.deproject_pixel_to_camera_frame) -- not room/
+            floor-plan coordinates, since that needs a separate camera-pose
+            calibration this pipeline doesn't do (see that function's
+            docstring for why that's a legitimate simplification here, not
+            a gap). out_dim=3.
+        use_3d=True, pinhole=False: (x, y) stay the same normalized [0,1]
+            image-plane values as the 2D case (no pinhole deprojection),
+            with z = metric depth min-max normalized to [0,1] over the
+            whole dataset (see _global_depth_range) appended as a third
+            channel -- so all three axes sit on the same interpretable
+            [0,1] scale and a combined RMSE means the same kind of thing
+            as the 2D-only run's. out_dim=3.
     present: (NumWindows, t_win) float32 -- per-timestep presence
     groups, activity_codes: (NumWindows,), as build_dataset.
 
@@ -737,6 +785,13 @@ def build_perframe_dataset(
             depth_state.append(setup_depth_pipeline())
         return depth_state[0]
 
+    depth_min = depth_max = None
+    if use_3d and not pinhole:
+        depth_min, depth_max = _global_depth_range(
+            captures, trajectory_cache_dir, depth_cache_dir, get_landmarker, get_depth_pipe, frame_skip,
+        )
+        print(f"global depth range for z-normalization: [{depth_min:.3f}, {depth_max:.3f}] m")
+
     X_list, pos_list, present_list, groups, activity_codes = [], [], [], [], []
     t_start = time.time()
     for i, capture in enumerate(captures, start=1):
@@ -770,8 +825,12 @@ def build_perframe_dataset(
                 print(f"  WARNING: no cached depth or video for {capture.trial_key} -- skipping")
                 continue
             depth_resampled = resample_depth(depth_raw, csi.shape[2])
-            width, height = get_video_dimensions(capture.video_path)
-            positions = deproject_pixel_to_camera_frame(positions, depth_resampled, width, height).astype(np.float32)
+            if pinhole:
+                width, height = get_video_dimensions(capture.video_path)
+                positions = deproject_pixel_to_camera_frame(positions, depth_resampled, width, height).astype(np.float32)
+            else:
+                z_norm = (depth_resampled - depth_min) / (depth_max - depth_min)
+                positions = np.concatenate([positions, z_norm[:, None]], axis=1).astype(np.float32)
 
         windows = make_perframe_windows(amp_z, positions, t_win, stride, present=present_mask)
         for w, pos_seq, present_seq in windows:
@@ -794,13 +853,16 @@ def build_perframe_dataset(
 
 
 def perframe_cache_paths(
-    cache_dir: Path, rate_ms: int, t_win: int, stride: int, use_3d: bool,
+    cache_dir: Path, rate_ms: int, t_win: int, stride: int, use_3d: bool, pinhole: bool = True,
     use_phase: bool = True, use_empty_baseline: bool = False,
     denoise: str | None = None, use_motion_magnitude: bool = False, amplitude_norm: str = "zscore",
     use_relative_motion: bool = False, use_spectral_ratio: bool = False, use_cross_coherence: bool = False,
     use_baseline_deviation: bool = False,
 ) -> tuple[Path, Path]:
-    dim_tag = "3d" if use_3d else "2d"
+    # "3d" (pinhole, real camera-frame meters) and "3dz" (no-pinhole, [0,1]
+    # image-plane x,y + [0,1]-normalized depth z) get distinct tags so the
+    # two never collide in cache or overwrite each other's cached arrays.
+    dim_tag = "2d" if not use_3d else ("3d" if pinhole else "3dz")
     base_tag = f"presence_position_perframe_{_feature_tag(use_phase, denoise=denoise, use_motion_magnitude=use_motion_magnitude, amplitude_norm=amplitude_norm, use_relative_motion=use_relative_motion, use_spectral_ratio=use_spectral_ratio, use_cross_coherence=use_cross_coherence, use_baseline_deviation=use_baseline_deviation)}_{dim_tag}_{rate_ms}ms_w{t_win}_s{stride}"
     tag = f"{base_tag}_ebase" if use_empty_baseline else base_tag
     return cache_dir / f"{tag}_meta.npz", cache_dir / f"{tag}_X.npy"
@@ -815,6 +877,7 @@ def load_or_build_perframe_dataset(
     t_win: int = 64,
     stride: int = 32,
     use_3d: bool = False,
+    pinhole: bool = True,
     use_phase: bool = True,
     use_empty_baseline: bool = False,
     denoise: str | None = None,
@@ -825,7 +888,7 @@ def load_or_build_perframe_dataset(
     use_cross_coherence: bool = False,
     use_baseline_deviation: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    meta_path, x_path = perframe_cache_paths(cache_dir, rate_ms, t_win, stride, use_3d, use_phase, use_empty_baseline, denoise, use_motion_magnitude, amplitude_norm, use_relative_motion, use_spectral_ratio, use_cross_coherence, use_baseline_deviation)
+    meta_path, x_path = perframe_cache_paths(cache_dir, rate_ms, t_win, stride, use_3d, pinhole, use_phase, use_empty_baseline, denoise, use_motion_magnitude, amplitude_norm, use_relative_motion, use_spectral_ratio, use_cross_coherence, use_baseline_deviation)
     if meta_path.exists() and x_path.exists():
         print(f"Loading cached dataset from {x_path}")
         meta = np.load(meta_path, allow_pickle=True)
@@ -835,12 +898,12 @@ def load_or_build_perframe_dataset(
     cache_dir.mkdir(parents=True, exist_ok=True)
     X, pos, present, groups, activity_codes = build_perframe_dataset(
         raw_root, trajectory_cache_dir, depth_cache_dir, rate_ms=rate_ms, t_win=t_win, stride=stride,
-        use_3d=use_3d, use_phase=use_phase, use_empty_baseline=use_empty_baseline, denoise=denoise,
+        use_3d=use_3d, pinhole=pinhole, use_phase=use_phase, use_empty_baseline=use_empty_baseline, denoise=denoise,
         use_motion_magnitude=use_motion_magnitude, amplitude_norm=amplitude_norm,
         use_relative_motion=use_relative_motion, use_spectral_ratio=use_spectral_ratio,
         use_cross_coherence=use_cross_coherence, use_baseline_deviation=use_baseline_deviation,
     )
-    meta_path, x_path = perframe_cache_paths(cache_dir, rate_ms, t_win, stride, use_3d, use_phase, use_empty_baseline, denoise, use_motion_magnitude, amplitude_norm, use_relative_motion, use_spectral_ratio, use_cross_coherence, use_baseline_deviation)
+    meta_path, x_path = perframe_cache_paths(cache_dir, rate_ms, t_win, stride, use_3d, pinhole, use_phase, use_empty_baseline, denoise, use_motion_magnitude, amplitude_norm, use_relative_motion, use_spectral_ratio, use_cross_coherence, use_baseline_deviation)
     np.save(x_path, X)
     np.savez(meta_path, pos=pos, present=present, groups=groups, activity_codes=activity_codes)
     print(f"Cached dataset to {x_path}")
