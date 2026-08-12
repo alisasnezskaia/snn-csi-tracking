@@ -14,3 +14,6 @@ results/videos/
 _removed_legacy/
 *.egg-info/
 .claude/settings.local.json
+_removed_legacy/
+*.egg-info/
+.claude/settings.local.json
