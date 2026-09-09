@@ -1,11 +1,11 @@
-"""THE joint presence+position tracking configuration -- matches the paper
+"""Joint presence+position tracking configuration -- matches the paper
 abstract's actual claim ("we formulate people tracking as a joint
-presence-detection and position-estimation problem"), NOT the simpler
+presence-detection and position-estimation problem"), not the simpler
 scalar motion-magnitude regression in the paper's (not yet updated) formal
-section, and NOT the paper's Section 3 preprocessing recipe verbatim.
-Preprocessing/architecture choices are instead "best of the best" from
-everything actually validated tonight, keeping the abstract's task framing
-as the only hard constraint:
+section, and not the paper's Section 3 preprocessing recipe verbatim.
+Preprocessing/architecture choices are "best of the best" from everything
+validated so far, with the abstract's task framing as the only hard
+constraint:
 
 KEPT (measured to help): phase-difference features (already validated by
 the grid-motion pipeline), a conv frontend before the LIF stack
@@ -17,18 +17,17 @@ delta-rate) overfit -- the motion-magnitude scalar channel
 "how much is changing" signal), and honest SESSION-grouped evaluation
 (never per-window/chronological for the reported numbers).
 
-DROPPED (measured to hurt or found structurally unsound tonight): the
-empty-room baseline correction (USE_EMPTY_BASELINE=False below) -- this was
-this session's own invention, not paper-backed, and traced to a specific
-day-to-day session-drift bug (a fixed person-free reference recorded on a
-different day than the trial it's applied to, breaking exactly when trial
-and reference amplitude scales disagree for reasons unrelated to occupancy)
-that was confirmed independently in both the L and EN-W activities. Per-
-trial normalization (baseline=None -> compute_features' own fallback) is
-self-referential and immune to that failure mode. Wavelet/PCA denoising
-measured ~zero benefit earlier and is left at --denoise none by default.
-CIR and a full per-subcarrier delta-rate channel are not included at all --
-both were tried and both overfit.
+DROPPED (measured to hurt or structurally unsound): the empty-room
+baseline correction (USE_EMPTY_BASELINE=False below) -- not paper-backed,
+and traced to a day-to-day session-drift bug (a fixed person-free
+reference recorded on a different day than the trial it's applied to,
+breaking whenever trial and reference amplitude scales disagree for
+reasons unrelated to occupancy), confirmed independently in both the L and
+EN-W activities. Per-trial normalization (baseline=None -> compute_features'
+own fallback) is self-referential and immune to that failure mode.
+Wavelet/PCA denoising measured ~zero benefit and is left at --denoise none
+by default. CIR and a full per-subcarrier delta-rate channel are not
+included at all -- both were tried and both overfit.
 
 Three variants, all run from this one script via --use-3d / --no-pinhole:
 2D (normalized image-plane x, y), 3D pinhole (real camera-relative X, Y, Z
@@ -54,23 +53,21 @@ Reports RMSE (root mean squared position error, masked to ground-truth-
 present frames) -- more directly interpretable on the [0,1]-normalized
 position scale than the raw squared/L2 "position_error" the older
 per-frame trainer reports. Checkpoint selection uses val RMSE directly
-(not the combined BCE+MSE training loss), so the model actually reported
-as "best" is the one that's best by the number we're reporting -- learned
-the hard way this session (see conversation: the grid-cell experiment's
-combined-loss selection picked an undertrained checkpoint once, because
-combined loss and the metric we cared about weren't tracking the same
-thing).
+(not the combined BCE+MSE training loss), so the model reported as "best"
+is the one that's best by the metric being reported: an earlier grid-cell
+experiment's combined-loss selection once picked an undertrained
+checkpoint, because combined loss and the metric that mattered weren't
+tracking the same thing.
 
 Also reports presence accuracy broken out by activity code, empty-room
 ("E") vs everything else: after empty-room baseline subtraction, E-frames
 sit at ~zero amplitude change and are trivially easy to classify absent --
 a single pooled presence accuracy number can look strong almost entirely
 because of how many easy E-frames are in the test set, without saying much
-about real presence detection during actual activity (see conversation).
+about real presence detection during actual activity.
 
-Groups by SESSION (condition + activity), not by individual capture file --
-checking the actual Drive layout (see conversation) showed every
-activity's 5 numbered "captures" are 5 repeats within *one* recording
+Groups by SESSION (condition + activity), not by individual capture file:
+each activity's 5 numbered captures are 5 repeats within one recording
 visit, sharing every confound (day, person, hardware warm-up, furniture)
 except which specific repetition it is. Grouping by capture alone
 overstates how much independent evidence backs the held-out split.
@@ -90,11 +87,8 @@ evaluate_presence_position.py) -- not to train differently, just to report
 a number directly comparable to historical baselines like
 presence_position_snn_perframe_ampphase_3d_50ms.pt's 0.814 presence_acc,
 which was measured that way. Comparing the session-grouped and
-chronological numbers for the same model tells you how much of any given
-presence_acc is genuine generalization versus split leakage (see
-conversation -- this is exactly the discrepancy that came up when 0.671
-looked like a regression from a historical 0.814 that was never measured
-the same way).
+chronological numbers for the same model shows how much of a given
+presence_acc is genuine generalization versus split leakage.
 """
 
 from __future__ import annotations
@@ -139,13 +133,40 @@ USE_RELATIVE_MOTION = True  # rolling-median-normalized motion magnitude, replac
                              # construction, targeting a driftING (not just fixed)
                              # per-session gain -- z-scoring is already invariant to
                              # a FIXED gain and still failed to generalize, which is
-                             # why this targets drift specifically (see conversation)
+                             # why this targets drift specifically
 AMPLITUDE_NORM = "energy"  # per-frame energy normalization, not per-trial z-score
                             # -- see preprocessing.energy_normalize's docstring:
                             # per-trial z-scoring erases the absolute-scale
                             # signal presence detection needs across sessions
-                            # (confirmed empirically: near-identical raw output
-                            # on two held-out sessions with opposite ground truth)
+                            # (near-identical raw output on two held-out
+                            # sessions with opposite ground truth)
+
+# --feature, added for scripts/estimate_energy_presence_position.py's checkpoint
+# provenance fix: this module's own USE_MOTION_MAGNITUDE/USE_RELATIVE_MOTION
+# constants above (relative_motion, effectively) were, until now, this script's
+# ONLY behavior -- silently different from the CV scripts' --feature
+# cross_coherence config used for the paper's Table 1/ablation numbers, even
+# though this is the ONLY script that saves a checkpoint to the exact path
+# estimate_energy_presence_position.py loads from. That mismatch meant the
+# energy script could load a checkpoint trained on one feature set and measure
+# spike rates as if it were another -- no shape-mismatch error either, since
+# every single-extra-channel config here is 8 channels either way. Default
+# stays "relative_motion" (== this script's historical, only-ever behavior) so
+# nothing about existing checkpoints/reproducibility changes silently; "full"
+# is the actual Eq. (9) feature stack (see plot_rmse_vs_epoch_3d.py's
+# FEATURE_KWARGS, same convention).
+FEATURE_KWARGS = {
+    "relative_motion": dict(use_motion_magnitude=USE_MOTION_MAGNITUDE, use_relative_motion=USE_RELATIVE_MOTION,
+                             use_spectral_ratio=False, use_cross_coherence=False),
+    "cross_coherence": dict(use_motion_magnitude=USE_MOTION_MAGNITUDE, use_relative_motion=False,
+                             use_spectral_ratio=False, use_cross_coherence=True),
+    "full": dict(use_motion_magnitude=True, use_relative_motion=True,
+                 use_spectral_ratio=True, use_cross_coherence=True),
+}
+# Checkpoint filename suffix per --feature -- "" for the default (relative_motion)
+# keeps every existing checkpoint path/reproducibility exactly as before; the
+# other two get distinct suffixes so they can never collide with it or each other.
+FEATURE_CKPT_SUFFIX = {"relative_motion": "", "cross_coherence": "_cc", "full": "_full"}
 
 CONV_CHANNELS = [16, 32]
 KERNEL_SIZE = 9
@@ -174,16 +195,15 @@ def session_key(trial_key: str) -> str:
 
 # Hand-curated session split, not a random draw -- with only 10 true
 # sessions total (2 per activity), a plain random/stratification-free split
-# can land on a genuinely broken bucket (confirmed this session: split-seed=2
-# put BOTH empty-room sessions in val together, making val 100% absent --
-# position RMSE there is then mathematically 0/0-shaped and trivially always
-# "perfect", silently breaking checkpoint selection). This assignment
-# instead guarantees: train includes an empty-room session (the model needs
-# real absent-class examples to learn what "nobody's here" looks like, not
-# just present-class ones), and neither val nor test is 100% one activity
-# type. Not chosen for the best score -- chosen to avoid a degenerate bucket,
-# which is the defensible bar here, not "hardest possible" or "easiest
-# possible" (see conversation).
+# can land on a genuinely broken bucket (split-seed=2 puts BOTH empty-room
+# sessions in val together, making val 100% absent -- position RMSE there
+# is then mathematically 0/0-shaped and trivially always "perfect", silently
+# breaking checkpoint selection). This assignment instead guarantees: train
+# includes an empty-room session (the model needs real absent-class
+# examples to learn what "nobody's here" looks like, not just present-class
+# ones), and neither val nor test is 100% one activity type. Not chosen for
+# the best score -- chosen to avoid a degenerate bucket, which is the
+# defensible bar here, not "hardest possible" or "easiest possible".
 BALANCED_SPLIT = {
     "NLoS_E": "train", "NLoS_EN-S": "train", "NLoS_EN-W": "train",
     "PLoS_EN-S": "train", "PLoS_L": "train", "PLoS_S": "train",
@@ -247,17 +267,17 @@ def position_norm_stats(train_ds) -> tuple[torch.Tensor, torch.Tensor]:
     BCE term (real-meters squared error routinely O(1-10) vs BCE's O(1)),
     which starved presence learning through the shared trunk -- confirmed
     by AUROC collapsing toward chance on the 3D SNN CV run despite
-    presence_acc still looking superficially OK (see conversation).
+    presence_acc still looking superficially OK.
 
     Min-max (not z-score/std) deliberately: this is leave-ACTIVITY-out CV,
     so the held-out fold's real positions can sit far outside the training
     activities' range (e.g. training on seated/desk activities, testing on
     a walking one) -- dividing by a std computed from a narrow-range axis
     blew up the held-out fold's normalized error to ~50x the intended scale
-    (see conversation: val_loss ~57 instead of the expected O(1-4)). Min-max
-    mirrors exactly how the old 2D pipeline's (x,y) was already scaled
-    (MediaPipe's own normalized-pixel convention), which is the known-good
-    reference point we're trying to reproduce the loss balance of.
+    (val_loss ~57 instead of the expected O(1-4)). Min-max mirrors exactly
+    how the old 2D pipeline's (x,y) was already scaled (MediaPipe's own
+    normalized-pixel convention), the known-good reference point this
+    reproduces the loss balance of.
     """
     present_mask = train_ds.extra.bool()
     present_pos = train_ds.labels[present_mask]
@@ -377,9 +397,8 @@ def rmse_meters(pos_pred: torch.Tensor, pos: torch.Tensor, pres: torch.Tensor, h
 def presence_balanced_acc(pres_pred: torch.Tensor, pres_gt: torch.Tensor, threshold: float) -> float:
     """Mean of sensitivity (present-recall) and specificity (absent-recall)
     -- unlike raw accuracy, not dominated by whichever class happens to be
-    more common in the split (see conversation: raw accuracy silently
-    rewarded a model that always predicted "present" on an imbalanced test
-    set)."""
+    more common in the split (raw accuracy rewards a model that always
+    predicts "present" on an imbalanced test set)."""
     pred = (torch.sigmoid(pres_pred) > threshold).float()
     pos_mask, neg_mask = pres_gt == 1, pres_gt == 0
     sens = (pred[pos_mask] == 1).float().mean().item() if pos_mask.any() else float("nan")
@@ -392,8 +411,8 @@ def calibrate_presence_threshold(model, val_loader) -> tuple[float, float]:
     """Sweeps the presence decision threshold on the VAL set (never test) and
     picks the one maximizing balanced accuracy, instead of hardcoding 0.5 --
     a free postprocessing fix for a model whose raw sigmoid output is biased
-    toward one class (see conversation: this run's first checkpoint predicted
-    "present" almost everywhere, tanking empty-room accuracy specifically).
+    toward one class (an early checkpoint predicted "present" almost
+    everywhere, tanking empty-room accuracy specifically).
     Returns (best_threshold, best_balanced_acc)."""
     pres_pred, _pos_pred, pres_gt, _pos_gt = collect_predictions(model, val_loader)
     best_t, best_score = 0.5, -1.0
@@ -465,10 +484,18 @@ def main():
     parser.add_argument("--split-mode", choices=["balanced", "random"], default="balanced",
                          help="'balanced' (default): hand-curated split guaranteeing no degenerate "
                               "all-one-activity bucket (see BALANCED_SPLIT). 'random': build_datasets_grouped "
-                              "with --split-seed -- can land on a broken bucket with only 10 sessions "
-                              "(confirmed this session), use to deliberately check split-sensitivity")
+                              "with --split-seed -- can land on a broken bucket with only 10 sessions, "
+                              "use to deliberately check split-sensitivity")
     parser.add_argument("--split-seed", type=int, default=0,
                          help="only used with --split-mode random -- which sessions land in train/val/test")
+    parser.add_argument("--feature", choices=list(FEATURE_KWARGS), default="relative_motion",
+                         help="relative_motion (default): this script's historical/only-ever behavior, unchanged -- "
+                              "AP + normalized motion magnitude, matches every existing checkpoint at this script's "
+                              "default output path. cross_coherence: AP + CC, matching the CV ablation's best config "
+                              "-- use this to produce a checkpoint that's actually consistent with Table 1's "
+                              "accuracy numbers (see module docstring/FEATURE_KWARGS comment -- until now, no "
+                              "script ever saved a checkpoint trained on this config, despite Table 1 implying one "
+                              "existed). full: the complete Eq. (9) feature stack.")
     args = parser.parse_args()
     denoise = None if args.denoise == "none" else args.denoise
 
@@ -482,18 +509,19 @@ def main():
 
     out_dim = 3 if args.use_3d else 2
     dim_tag = "2d" if not args.use_3d else ("3d" if args.pinhole else "3dz")
-    model_out = REPO_ROOT / "results" / "models" / f"presence_position_conv_{args.model}_{dim_tag}_{args.denoise}_50ms.pt"
+    ckpt_suffix = FEATURE_CKPT_SUFFIX[args.feature]
+    model_out = REPO_ROOT / "results" / "models" / f"presence_position_conv_{args.model}_{dim_tag}_{args.denoise}_50ms{ckpt_suffix}.pt"
 
     t_start = time.time()
     print(f"Loading {RATE_MS}ms captures, T_WIN={T_WIN}, STRIDE={STRIDE}, use_3d={args.use_3d}, "
           f"pinhole={args.pinhole}, model={args.model}, use_empty_baseline={USE_EMPTY_BASELINE}, "
-          f"amplitude_norm={AMPLITUDE_NORM}, denoise={denoise}, use_motion_magnitude={USE_MOTION_MAGNITUDE}, "
-          f"use_relative_motion={USE_RELATIVE_MOTION}, seed={args.seed}...")
+          f"amplitude_norm={AMPLITUDE_NORM}, denoise={denoise}, feature={args.feature} ({FEATURE_KWARGS[args.feature]}), "
+          f"seed={args.seed}...")
     X, pos, present, groups, activity_codes = load_or_build_perframe_dataset(
         RAW_ROOT, TRAJECTORY_CACHE_DIR, DEPTH_CACHE_DIR, CACHE_DIR,
         rate_ms=RATE_MS, t_win=T_WIN, stride=STRIDE, use_3d=args.use_3d, pinhole=args.pinhole, use_phase=USE_PHASE,
-        use_empty_baseline=USE_EMPTY_BASELINE, denoise=denoise, use_motion_magnitude=USE_MOTION_MAGNITUDE,
-        amplitude_norm=AMPLITUDE_NORM, use_relative_motion=USE_RELATIVE_MOTION,
+        use_empty_baseline=USE_EMPTY_BASELINE, denoise=denoise, amplitude_norm=AMPLITUDE_NORM,
+        **FEATURE_KWARGS[args.feature],
     )
     print(f"X={X.shape}, pos={pos.shape}, {len(set(groups))} trials ({time.time()-t_start:.1f}s)")
 
@@ -526,11 +554,10 @@ def main():
 
     # Selection criterion is val_loss (BCE-presence + MSE-position + smoothness),
     # not val_rmse alone -- this task is JOINTLY presence+position (the
-    # abstract's actual claim), and selecting purely by rmse picked a
+    # abstract's actual claim), and selecting purely by rmse once picked a
     # checkpoint that was excellent at position but collapsed to "always
-    # present" on this run (empty-room test accuracy 0.143, worse than
-    # chance) -- see conversation. val_loss is the one number that's a
-    # genuine function of both heads together.
+    # present" (empty-room test accuracy 0.143, worse than chance). val_loss
+    # is the one number that's a genuine function of both heads together.
     best_val_loss, best_state, best_epoch = float("inf"), None, None
 
     print(f"\nTraining on {DEVICE} for {NUM_EPOCHS} epochs...")
@@ -591,7 +618,7 @@ def main():
     # 0.814 presence_acc, which was measured this way (evaluate_presence_
     # position.py -> dataset.build_datasets), not with session-grouping.
     # Isolates how much of any reported number is split-methodology versus
-    # actual model quality (see conversation).
+    # actual model quality.
     _chrono_train_ds, _chrono_val_ds, chrono_test_ds = build_datasets(
         X, pos, groups, label_dtype=torch.float32, extra=present
     )

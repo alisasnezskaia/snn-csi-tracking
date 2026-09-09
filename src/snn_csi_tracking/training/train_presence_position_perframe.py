@@ -52,7 +52,7 @@ OUT_DIM = 3 if USE_3D else 2
 # e.g. someone appearing far from the 0.5 placeholder used when absent).
 # Motivated by the 3D trajectory plot: predicted position was jumping around
 # every frame while ground truth moves continuously, like a real person
-# actually does (see conversation). 0 disables it, for an A/B comparison.
+# actually does. 0 disables it, for an A/B comparison.
 SMOOTHNESS_WEIGHT = 1.0
 
 _dim_tag = "3d" if USE_3D else "2d"
@@ -66,10 +66,9 @@ HIDDEN_2 = 32
 
 LEARNING_RATE = 5e-4
 BATCH_SIZE = 32
-# 20 epochs (the notebook's original choice) wasn't enough -- the fixed 3D
-# run's train loss and val accuracy were both still improving at epoch 20
-# (see conversation), not plateaued. 60 gives real headroom to check for
-# convergence instead of guessing.
+# 20 epochs wasn't enough -- the 3D run's train loss and val accuracy were
+# both still improving at epoch 20, not plateaued. 60 gives real headroom
+# to check for convergence instead of guessing.
 NUM_EPOCHS = 60
 NUM_WORKERS = 4
 

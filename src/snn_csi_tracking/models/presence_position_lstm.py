@@ -2,9 +2,9 @@
 -- a fairer conventional-DL benchmark than models.presence_position_ann.
 ANNPresencePositionConvPerFrame's hand-rolled leaky-accumulation recurrence
 (chosen there specifically to mirror the SNN's structure for a clean energy
-comparison, at the cost of stability -- see conversation: its RMSE curve
-oscillated past 2x its starting error over training, no reset mechanism to
-bound the membrane).
+comparison, at the cost of stability: its RMSE curve oscillated past 2x
+its starting error over training, since it has no reset mechanism to bound
+the membrane).
 
 Same PerFrameConvEncoder frontend, same two-layer depth, same two heads
 (presence + position) -- but the temporal recurrence is a real 2-layer

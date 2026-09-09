@@ -26,13 +26,26 @@ Per-layer accounting for SNNPresencePositionConvPerFrame:
                                          (a small dense readout off the
                                          spiking trunk, same convention as
                                          CSIConvSpikingRegressor's readout)
-The shared PerFrameConvEncoder frontend is identical (dense) in both models
-and excluded from the comparison, matching estimate_energy.py's convention
--- the energy story here is specifically about the spiking-vs-dense
-fully-connected trunk, not the conv frontend both models share as-is.
+The shared PerFrameConvEncoder frontend is identical (dense) in both models.
+Reports BOTH conventions: TRUNK ONLY (encoder excluded, matching this
+script's original convention -- isolates the spiking-vs-dense
+fully-connected trunk specifically) and FULL PIPELINE (encoder + trunk --
+what a real deployment actually pays). The encoder is always fully dense
+(never spike-gated, even in the SNN -- delta-encoding happens on its
+OUTPUT, see forward()) and architecturally identical across SNN/ANN/LSTM,
+so its energy is one shared number added to every model's trunk total.
+
+--feature must match whichever config the checkpoint being loaded was
+TRAINED with (see train_presence_position_conv.py's FEATURE_KWARGS/
+FEATURE_CKPT_SUFFIX) -- this used to be silently assumed via this module's
+own USE_RELATIVE_MOTION/USE_MOTION_MAGNITUDE constants, which meant a
+checkpoint trained on one feature config could get loaded and measured as
+if it were another with no error (every single-extra-channel config here
+is 8 channels either way, so state_dict shapes always matched). Now
+explicit and shared with the training script, so the two can't drift apart.
 
 Run (after training both --model snn and --model ann checkpoints):
-    .venv/bin/python scripts/estimate_energy_presence_position.py
+    .venv/bin/python scripts/estimate_energy_presence_position.py --feature cross_coherence
 """
 
 from __future__ import annotations
@@ -51,9 +64,9 @@ from snn_csi_tracking.data.presence_position_dataset import load_or_build_perfra
 from snn_csi_tracking.models.presence_position_ann import ANNPresencePositionConvPerFrame
 from snn_csi_tracking.models.presence_position_snn import SNNPresencePositionConvPerFrame
 from snn_csi_tracking.training.train_presence_position_conv import (
-    AMPLITUDE_NORM, BATCH_SIZE, CACHE_DIR, CONV_CHANNELS, DELTA_THRESHOLD, DEPTH_CACHE_DIR, HIDDEN_1, HIDDEN_2,
-    KERNEL_SIZE, RATE_MS, RAW_ROOT, STRIDE, T_WIN, TRAJECTORY_CACHE_DIR, USE_EMPTY_BASELINE,
-    USE_MOTION_MAGNITUDE, USE_PHASE, USE_RELATIVE_MOTION, make_dataloaders,
+    AMPLITUDE_NORM, BATCH_SIZE, CACHE_DIR, CONV_CHANNELS, DELTA_THRESHOLD, DEPTH_CACHE_DIR, FEATURE_CKPT_SUFFIX,
+    FEATURE_KWARGS, HIDDEN_1, HIDDEN_2, KERNEL_SIZE, RATE_MS, RAW_ROOT, STRIDE, T_WIN, TRAJECTORY_CACHE_DIR,
+    USE_EMPTY_BASELINE, USE_PHASE, make_dataloaders,
 )
 
 E_MAC_PJ = 4.6
@@ -99,6 +112,28 @@ def layer_specs(model) -> list[tuple[str, int, int, str]]:
     ]
 
 
+def conv_encoder_macs_per_frame(conv_encoder, num_channels: int, num_subcarriers: int) -> int:
+    """Dense MAC count for ONE forward pass of PerFrameConvEncoder on a single
+    frame (batch=1) -- multiply by T_WIN for a whole window. Counts every
+    nn.Conv1d via a forward hook (out_channels * in_channels * kernel_size *
+    output_length, the standard dense-conv MAC formula). Always fully dense in
+    every model (SNN/ANN/LSTM all share this identical frontend, never
+    spike-gated -- delta-encoding happens on the encoder's OUTPUT), so this
+    one count applies to all three when estimating full-pipeline energy."""
+    macs = 0
+
+    def hook(module, _inp, out):
+        nonlocal macs
+        macs += module.out_channels * module.in_channels * module.kernel_size[0] * out.shape[-1]
+
+    handles = [m.register_forward_hook(hook) for m in conv_encoder.conv if isinstance(m, torch.nn.Conv1d)]
+    with torch.no_grad():
+        conv_encoder.conv(torch.zeros(1, num_channels, num_subcarriers, device=next(conv_encoder.parameters()).device))
+    for h in handles:
+        h.remove()
+    return macs
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--use-3d", action="store_true", help="compare the 3D (x,y,z) checkpoints instead of 2D")
@@ -106,18 +141,23 @@ def main():
                          help="only meaningful with --use-3d: match checkpoints trained with --no-pinhole "
                               "(normalized [0,1] x,y + [0,1]-normalized z, no pinhole deprojection) instead of "
                               "the real-meters pinhole checkpoints -- picks the right dim_tag/checkpoint path")
+    parser.add_argument("--feature", choices=list(FEATURE_KWARGS), default="cross_coherence",
+                         help="MUST match the --feature the checkpoint being loaded was trained with (see "
+                              "train_presence_position_conv.py) -- picks both the dataset config and the "
+                              "checkpoint filename suffix, so the two can never silently mismatch.")
     args = parser.parse_args()
     out_dim = 3 if args.use_3d else 2
     dim_tag = "2d" if not args.use_3d else ("3d" if args.pinhole else "3dz")
+    ckpt_suffix = FEATURE_CKPT_SUFFIX[args.feature]
 
     print(f"Loading {RATE_MS}ms captures (same config used to train presence_position_conv models: "
           f"use_3d={args.use_3d}, pinhole={args.pinhole}, use_empty_baseline={USE_EMPTY_BASELINE}, "
-          f"use_motion_magnitude={USE_MOTION_MAGNITUDE}, use_relative_motion={USE_RELATIVE_MOTION})...")
+          f"feature={args.feature} ({FEATURE_KWARGS[args.feature]}))...")
     X, pos, present, groups, activity_codes = load_or_build_perframe_dataset(
         RAW_ROOT, TRAJECTORY_CACHE_DIR, DEPTH_CACHE_DIR, CACHE_DIR,
         rate_ms=RATE_MS, t_win=T_WIN, stride=STRIDE, use_3d=args.use_3d, pinhole=args.pinhole, use_phase=USE_PHASE,
-        use_empty_baseline=USE_EMPTY_BASELINE, denoise=None, use_motion_magnitude=USE_MOTION_MAGNITUDE,
-        amplitude_norm=AMPLITUDE_NORM, use_relative_motion=USE_RELATIVE_MOTION,
+        use_empty_baseline=USE_EMPTY_BASELINE, denoise=None, amplitude_norm=AMPLITUDE_NORM,
+        **FEATURE_KWARGS[args.feature],
     )
     _train_loader, _val_loader, test_loader, _train_ds, _test_ds = make_dataloaders(
         X, pos, present, groups, activity_codes, BATCH_SIZE, split_seed=0, split_mode="balanced"
@@ -133,8 +173,8 @@ def main():
         h1=HIDDEN_1, h2=HIDDEN_2, out_dim=out_dim, kernel_size=KERNEL_SIZE,
     ).to(DEVICE)
 
-    snn_ckpt = REPO_ROOT / "results" / "models" / f"presence_position_conv_snn_{dim_tag}_none_50ms.pt"
-    ann_ckpt = REPO_ROOT / "results" / "models" / f"presence_position_conv_ann_{dim_tag}_none_50ms.pt"
+    snn_ckpt = REPO_ROOT / "results" / "models" / f"presence_position_conv_snn_{dim_tag}_none_50ms{ckpt_suffix}.pt"
+    ann_ckpt = REPO_ROOT / "results" / "models" / f"presence_position_conv_ann_{dim_tag}_none_50ms{ckpt_suffix}.pt"
     for name, model, ckpt in [("SNN", snn_model, snn_ckpt), ("ANN", ann_model, ann_ckpt)]:
         if ckpt.exists():
             model.load_state_dict(torch.load(ckpt, map_location=DEVICE))
@@ -173,11 +213,22 @@ def main():
         gated = f"rate={snn_rate:.4f}" if rate_key is not None else "dense (unGated, both models)"
         print(f"  {name:16s} ({in_f:4d}x{out_f:3d}): SNN={snn_pj/1e3:8.2f} nJ  ANN={ann_pj/1e3:8.2f} nJ  [{gated}]")
 
+    encoder_macs = conv_encoder_macs_per_frame(snn_model.conv_encoder, num_channels, num_subcarriers)
+    encoder_pj = encoder_macs * T_WIN * E_MAC_PJ  # always dense, identical architecture in every model
+
     print()
     print(f"Estimated energy per window (T={T_WIN} timesteps @ {RATE_MS}ms = {T_WIN*RATE_MS/1000:.1f}s of CSI), per example:")
+    print(f"  -- TRUNK ONLY (encoder excluded) --")
     print(f"  SNN (spike-gated AC, {E_AC_PJ} pJ/op):  {total_snn_pj/1e3:.2f} nJ")
     print(f"  ANN (dense MAC, {E_MAC_PJ} pJ/op):       {total_ann_pj/1e3:.2f} nJ")
     print(f"  ANN / SNN ratio: {total_ann_pj/total_snn_pj:.1f}x more energy for the dense ANN")
+    print()
+    print(f"  -- FULL PIPELINE (shared dense encoder + trunk) --")
+    print(f"  PerFrameConvEncoder ({encoder_macs} MACs/frame, always dense, identical in every model): {encoder_pj/1e3:.2f} nJ/window")
+    total_snn_full_pj, total_ann_full_pj = total_snn_pj + encoder_pj, total_ann_pj + encoder_pj
+    print(f"  SNN total: {total_snn_full_pj/1e3:.2f} nJ  (encoder is {encoder_pj/total_snn_full_pj*100:.1f}% of it)")
+    print(f"  ANN total: {total_ann_full_pj/1e3:.2f} nJ  (encoder is {encoder_pj/total_ann_full_pj*100:.1f}% of it)")
+    print(f"  ANN / SNN ratio (full pipeline): {total_ann_full_pj/total_snn_full_pj:.2f}x more energy for the dense ANN")
 
 
 if __name__ == "__main__":

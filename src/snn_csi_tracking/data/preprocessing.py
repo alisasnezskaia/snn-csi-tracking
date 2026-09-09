@@ -10,10 +10,10 @@ def _soft_threshold(c: np.ndarray, threshold: np.ndarray) -> np.ndarray:
     pywt.threshold -- pywt's own implementation divides by the coefficient's
     magnitude internally and produces NaN (0/0) whenever both the
     coefficient and the threshold are exactly zero, which happens for every
-    genuinely constant/silent channel (confirmed: CSI guard-band/null
-    subcarriers, ~84 of 1024, have zero variance and so zero detail
-    coefficients at every level -- see conversation). This formula has no
-    division, so it's NaN-safe unconditionally."""
+    genuinely constant/silent channel (CSI guard-band/null subcarriers,
+    ~84 of 1024, have zero variance and so zero detail coefficients at
+    every level). This formula has no division, so it's NaN-safe
+    unconditionally."""
     return np.sign(c) * np.maximum(np.abs(c) - threshold, 0)
 
 
@@ -134,17 +134,16 @@ def energy_normalize(csi: np.ndarray, freq_axis: int = 0, eps: float = 1e-8) -> 
     granularity AGC actually operates at: frame-by-frame, not trial-by-trial
     or day-by-day.
 
-    Motivation confirmed empirically, not just in theory: a model trained
-    on per-trial z-scored amplitude produced nearly IDENTICAL raw presence
-    probabilities (mean/std/max all matching to 3 decimals) on two held-out
-    test sessions with opposite ground truth -- one genuinely empty, one
-    65% occupied. Per-trial normalization scales every trial to mean-0/
-    std-1 BY CONSTRUCTION, including genuinely silent ones, so it structurally
-    cannot carry the absolute "how much is this really changing" signal
-    presence detection needs on a session the model wasn't trained on. Per-
-    frame energy normalization keeps the AGC gain state from leaking into
-    the features (same problem the empty-room baseline was trying to solve)
-    without needing a separately-recorded, potentially-drifted reference.
+    Per-trial z-scoring scales every trial to mean-0/std-1 by construction,
+    including genuinely silent ones, so it cannot carry the absolute "how
+    much is this really changing" signal presence detection needs on an
+    unseen session: a model trained on z-scored amplitude produced nearly
+    identical raw presence probabilities (mean/std/max matching to 3
+    decimals) on two held-out sessions with opposite ground truth (one
+    empty, one 65% occupied). Per-frame energy normalization keeps AGC
+    gain state from leaking into the features -- the same problem an
+    empty-room baseline addresses -- without needing a separately
+    recorded, potentially drifted reference.
 
     Args:
         csi: array of shape (T, NumSubcarriers, NumAntennas), real or complex.
@@ -305,8 +304,8 @@ def grid_motion_labels(
     displacement whose starting frame falls in each cell -- a
     (grid_dim**2,)-dim vector per window, mostly zero, answering "how much
     motion happened, and roughly where" rather than a single averaged
-    position (see conversation notes: plain continuous (x,y) regression
-    scored weakly, R^2=0.158, on a diagnostic elsewhere).
+    position (plain continuous (x,y) regression scored weakly, R^2=0.158,
+    on a diagnostic elsewhere).
 
     `bounds` = (x_min, x_max, y_min, y_max) should be computed once across
     every trial being used (not per trial), so a given cell index means the

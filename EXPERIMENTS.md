@@ -102,6 +102,6 @@ unless noted otherwise. Metric: test MSE, and R^2 = 1 - test_mse/label_variance
   floor-plane homography (`calibrate_homography.py` +
   `apply_homography_to_trajectories.py`, built, not yet run) -- would
   replace the current uncalibrated pixels/frame label with actual m/s.
-- **Recover the 17 trials missing ground truth** (13 of them NLoS/5ms --
-  see conversation notes) -- modest size gain (~11%) but fixes a real
-  coverage gap in that specific condition/rate combination.
+- **Recover the 17 trials missing ground truth** (13 of them NLoS/5ms) --
+  modest size gain (~11%) but fixes a real coverage gap in that specific
+  condition/rate combination.

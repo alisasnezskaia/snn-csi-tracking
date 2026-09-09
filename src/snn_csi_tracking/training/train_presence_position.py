@@ -2,10 +2,10 @@
 captures + MediaPipe-extracted video trajectories under data/raw_captures/
 (see data/raw_capture_loader.py's docstring for the expected layout).
 
-Ported from the working notebook (csi_tracking_clean) that got 76.7% test
-presence accuracy on a first attempt -- T_WIN=64/STRIDE=32 here matches what
-that notebook's MAIN run actually used (not the T_WIN=128/STRIDE=64
-mentioned in an earlier, superseded config cell).
+Ported from the exploratory notebook (csi_tracking_clean) that reached
+76.7% test presence accuracy on a first attempt -- T_WIN=64/STRIDE=32 here
+matches that notebook's actual main run (not the T_WIN=128/STRIDE=64 in an
+earlier, superseded config cell).
 
 Unlike the notebook, spikes are encoded per-batch inside the training loop
 rather than precomputed for the whole train/val/test split up front -- each
@@ -49,10 +49,9 @@ HIDDEN_2 = 32
 
 LEARNING_RATE = 5e-4
 BATCH_SIZE = 32
-# 20 epochs (the notebook's original choice) turned out not to be enough --
-# the per-frame model's train loss and val accuracy were both still moving
-# at epoch 20 (see conversation), not plateaued. 60 gives real headroom to
-# check for convergence instead of guessing.
+# 20 epochs turned out not to be enough -- the per-frame model's train loss
+# and val accuracy were both still moving at epoch 20, not plateaued. 60
+# gives real headroom to check for convergence instead of guessing.
 NUM_EPOCHS = 60
 NUM_WORKERS = 4
 

@@ -59,10 +59,10 @@ def motion_magnitude_feature(csi: np.ndarray) -> np.ndarray:
     T) float32: mean absolute frame-to-frame amplitude change across every
     antenna/subcarrier, broadcast across the subcarrier axis -- a single
     compact "how much is changing right now" scalar per frame, not a
-    per-subcarrier delta channel (see conversation: a full per-subcarrier
-    delta-rate companion channel doubled the whole feature width and
-    overfit badly; this is the same underlying idea at a dimensionality
-    that doesn't blow up the first layer's parameter count)."""
+    per-subcarrier delta channel. A full per-subcarrier delta-rate channel
+    doubles the feature width and overfits badly; this keeps the same
+    underlying signal at a dimensionality that doesn't blow up the first
+    layer's parameter count."""
     amp = np.abs(csi)
     diff = np.diff(amp, axis=2, prepend=amp[:, :, :1])
     magnitude = np.abs(diff).mean(axis=(0, 1))  # (T,)
@@ -74,18 +74,18 @@ def relative_motion_magnitude_feature(csi: np.ndarray, rolling_frames: int = 20)
     of its own recent history (past `rolling_frames`, ~1s at 50ms) instead
     of returned as a raw absolute delta.
 
-    Motivation (see conversation): z-scoring is already mathematically
-    invariant to a single FIXED multiplicative gain difference between
-    trials (a constant factor cancels exactly out of (x-mean)/std) -- it
-    still failed to generalize across sessions, which means the real
-    nuisance is more likely a gain that DRIFTS continuously within a
-    recording (consistent with AGC continuously re-adjusting, not just
-    resetting once per file) than a single fixed per-trial scale. A ratio
-    against the WHOLE trial's own median has the same blind spot z-scoring
-    does, for the same reason -- this instead asks "how much bigger is
-    THIS frame's change than a typical frame from the last second", which
-    adapts locally as any slow gain drift moves, while still preserving
-    the frame-to-frame contrast that signals real motion.
+    Per-trial z-scoring is already mathematically invariant to a single
+    FIXED multiplicative gain difference between trials (a constant factor
+    cancels exactly out of (x-mean)/std), yet still fails to generalize
+    across sessions -- implying the real nuisance is a gain that DRIFTS
+    continuously within a recording (consistent with AGC re-adjusting
+    continuously, not just resetting once per file) rather than a single
+    fixed per-trial scale. A ratio against the WHOLE trial's own median has
+    the same blind spot as z-scoring, for the same reason; this instead
+    asks "how much bigger is THIS frame's change than a typical frame from
+    the last second," which adapts locally as any slow gain drift moves,
+    while still preserving the frame-to-frame contrast that signals real
+    motion.
 
     Returns (1, NumSubcarriers, T) float32, broadcast across subcarriers
     like motion_magnitude_feature."""
@@ -106,7 +106,7 @@ def spectral_motion_ratio_feature(
     """csi: (NumAntennas, NumSubcarriers, T) complex. Returns (1, NumSubcarriers,
     T) float32: ratio of low-frequency ("human motion band") to high-
     frequency ("noise reference band") power in the amplitude's OWN causal,
-    trailing-window temporal spectrum -- see conversation.
+    trailing-window temporal spectrum.
 
     Unlike raw or relative motion magnitude (both about HOW MUCH the signal
     changes), this targets HOW it changes: real human motion (footsteps
@@ -155,7 +155,7 @@ def cross_antenna_coherence_feature(
     """csi: (NumAntennas, NumSubcarriers, T) complex. Returns (1,
     NumSubcarriers, T) float32: magnitude-squared coherence between
     antenna pairs, averaged within `band`, computed causally over a
-    trailing `window`-frame stretch -- see conversation.
+    trailing `window`-frame stretch.
 
     A genuinely NEW axis from spectral_motion_ratio_feature (which asks
     "does THIS ONE signal look structured over time"): this asks "do
@@ -212,7 +212,7 @@ def empty_baseline_deviation_feature(
     each (NumAntennas, NumSubcarriers, 1), from raw_capture_loader.
     load_empty_room_baseline. Returns (NumAntennas, NumSubcarriers, T)
     float32: this trial's raw amplitude z-scored against the condition's
-    person-free empty-room reference -- see conversation.
+    person-free empty-room reference.
 
     Unlike every other feature in this module (relative_motion,
     spectral_ratio, cross_coherence), which all measure HOW the signal
@@ -287,9 +287,9 @@ def compute_features(
     denoise: None, "wavelet", or "pca" (see preprocessing.wavelet_denoise /
     pca_denoise) -- applied to raw amplitude before z-scoring, on the
     theory that most CSI-based position/localization work in the
-    literature denoises first (see conversation). Only wired into the
-    baseline (empty-room-normalized) and amplitude-only paths for now, not
-    the plain per-trial-normalized use_phase path.
+    literature denoises first. Only wired into the baseline
+    (empty-room-normalized) and amplitude-only paths for now, not the
+    plain per-trial-normalized use_phase path.
 
     use_motion_magnitude=True: adds 1 more channel, see
     motion_magnitude_feature. use_relative_motion=True: uses
@@ -302,9 +302,9 @@ def compute_features(
     "energy" (per-FRAME energy normalization, preprocessing.energy_normalize)
     -- only applies to the no-baseline amplitude path (baseline=None); see
     that function's docstring for why "zscore" structurally can't
-    generalize presence detection across sessions (confirmed empirically:
-    near-identical raw output on two held-out sessions with opposite
-    ground truth) and "energy" is the AGC-appropriate fix.
+    generalize presence detection across sessions (near-identical raw
+    output on two held-out sessions with opposite ground truth) and
+    "energy" is the AGC-appropriate fix.
     """
     if not use_phase:
         amp = _denoise(np.abs(csi), denoise)
@@ -568,9 +568,9 @@ def build_capture_cache(
 
     A stride=1 windowing of this pipeline's ~50 captures at t_win=64 would
     produce ~56,850 windows; storing each as its own (8, 1024, 64) float32
-    array is ~108GB on disk -- >2x the 48GB actually free on this machine
-    (see conversation) -- despite consecutive windows sharing 63 of 64
-    frames. This function instead caches each capture's feature array ONCE
+    array is ~108GB on disk -- more than typical local disk headroom --
+    despite consecutive windows sharing 63 of 64 frames. This function
+    instead caches each capture's feature array ONCE
     (~40MB/capture, ~2GB total, independent of whatever stride is used
     later), and windowing happens on demand in SlidingWindowCaptureDataset
     via cheap array slicing -- the standard, memory-correct way to do

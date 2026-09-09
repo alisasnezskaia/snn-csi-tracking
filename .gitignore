@@ -5,15 +5,20 @@ data/raw/
 data/raw_captures/
 data/processed/
 data/ground_truth/
-results/videos/
+results/
 *.pt
 *.bak_*
 .DS_Store
 *.egg-info/
 .claude/settings.local.json
 _removed_legacy/
-*.egg-info/
-.claude/settings.local.json
-_removed_legacy/
-*.egg-info/
-.claude/settings.local.json
+
+# Personal reference images, not part of the codebase
+canvas.png
+data_structure.png
+experiment_setup.png
+
+# Superseded by the conv/perframe training entry points; kept on disk for reference
+src/snn_csi_tracking/models/regression_ann.py
+scripts/plot_rmse_vs_epoch_legacy_2d.py
+scripts/train_presence_position_cv_legacy_2d.py

@@ -66,6 +66,20 @@ MODELS = ["snn", "ann", "lstm"]
 LABELS = {"snn": "SNN (best, cross\\_coherence)", "ann": "ANN", "lstm": "LSTM"}
 COLORS = {"snn": "#2563eb", "ann": "#dc2626", "lstm": "#eab308"}  # same convention as the 2D plot
 
+# --feature full adds raw motion magnitude, relative (normalized) motion, spectral
+# ratio, AND cross-coherence together -- the actual Eq. (9) F[t] feature stack from
+# the paper, vs. the historical --feature cross_coherence default (AP+CC only, the
+# config every existing results/rmse_vs_epoch_history_3d.npz and
+# results/figures/rmse_vs_epoch_3d.{pdf,png} were produced with). Writes to
+# differently-named outputs (see out_tag below) so a --feature full run never
+# overwrites the existing AP+CC results -- both can be compared side by side.
+FEATURE_KWARGS = {
+    "cross_coherence": dict(use_motion_magnitude=USE_MOTION_MAGNITUDE, use_relative_motion=False,
+                             use_spectral_ratio=False, use_cross_coherence=True),
+    "full": dict(use_motion_magnitude=True, use_relative_motion=True,
+                 use_spectral_ratio=True, use_cross_coherence=True),
+}
+
 
 def make_fold_loaders(X, pos, present, groups, test_activity: str, val_activity: str):
     sessions = np.array([session_key(g) for g in groups])
@@ -159,17 +173,24 @@ def main():
                          help="skip the pinhole deprojection and keep (x, y) as normalized [0,1] image-plane "
                               "values with z = metric depth min-max normalized to [0,1] over the whole dataset "
                               "-- RMSE then stays on the same [0,1] scale as the 2D-only run")
+    parser.add_argument("--feature", choices=["cross_coherence", "full"], default="cross_coherence",
+                         help="cross_coherence (default): AP+CC only, matches every existing results/ output. "
+                              "full: the complete Eq. (9) feature stack (raw motion magnitude + relative motion "
+                              "+ spectral ratio + cross-coherence together) -- writes to separately-named "
+                              "outputs, never overwrites the cross_coherence results.")
     args = parser.parse_args()
     unit_desc = "camera-frame meters" if args.pinhole else "[0,1] image-plane x,y + [0,1]-normalized depth z"
-    out_tag = "3d" if args.pinhole else "3dz"
+    out_tag = ("3d" if args.pinhole else "3dz") + ("" if args.feature == "cross_coherence" else "_full")
+    if args.feature == "full":
+        LABELS["snn"] = "SNN (full feature vector)"
 
-    print(f"Loading 3D dataset (amplitude_norm={AMPLITUDE_NORM}, feature=cross_coherence, out_dim={OUT_DIM}, "
+    print(f"Loading 3D dataset (amplitude_norm={AMPLITUDE_NORM}, feature={args.feature}, out_dim={OUT_DIM}, "
           f"pinhole={args.pinhole}, z={unit_desc})...")
     X, pos, present, groups, _activity_codes = load_or_build_perframe_dataset(
         RAW_ROOT, TRAJECTORY_CACHE_DIR, DEPTH_CACHE_DIR, CACHE_DIR,
         rate_ms=RATE_MS, t_win=T_WIN, stride=STRIDE, use_3d=True, pinhole=args.pinhole, use_phase=USE_PHASE,
-        use_empty_baseline=USE_EMPTY_BASELINE, denoise=None, use_motion_magnitude=USE_MOTION_MAGNITUDE,
-        amplitude_norm=AMPLITUDE_NORM, use_relative_motion=False, use_cross_coherence=True,
+        use_empty_baseline=USE_EMPTY_BASELINE, denoise=None, amplitude_norm=AMPLITUDE_NORM,
+        **FEATURE_KWARGS[args.feature],
     )
     X = np.asarray(X)
     print(f"dataset shape: X={X.shape}  pos={pos.shape}")

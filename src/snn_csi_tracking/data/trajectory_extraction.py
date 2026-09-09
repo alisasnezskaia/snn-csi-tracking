@@ -103,9 +103,9 @@ def clean_trajectory(positions: np.ndarray, max_interp_gap: int = 30) -> tuple[n
 
 
 def classify_presence_from_gaps(positions: np.ndarray) -> np.ndarray:
-    """Ground-truth presence, smarter than the naive `~isnan(positions[:,0])`
-    (see conversation): that naive rule treats EVERY undetected frame as
-    "person absent," which is correct for a gap touching the very start or
+    """Ground-truth presence, smarter than the naive `~isnan(positions[:,0])`:
+    that naive rule treats EVERY undetected frame as "person absent," which
+    is correct for a gap touching the very start or
     end of a recording (genuinely not yet entered / already left) but wrong
     for a gap stranded in the MIDDLE of a recording (detected before it AND
     after it) -- during an activity where the person never left, a middle

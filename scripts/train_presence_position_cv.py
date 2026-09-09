@@ -1,12 +1,12 @@
-"""Leave-activity-out cross-validation for the joint presence+position
-task -- the methodologically correct way to report a number with only 10
-total sessions (see conversation: a single fixed train/val/test split
-(train_presence_position_conv.py's BALANCED_SPLIT) landed on a test session
-(NLoS_L) with AUROC=0.419 -- worse than chance, meaning no threshold-based
-postprocessing can fix it -- and it was unclear whether that one split was
-simply unlucky or reflects a systemic generalization problem. Averaging
-across folds is the only way to tell the difference, and is the actual
-expected methodology a reviewer would want to see with N=10 sessions.
+"""Leave-activity-out cross-validation for the joint presence+position task.
+
+With only 10 sessions, a single fixed train/val/test split can land on an
+unrepresentative test session -- train_presence_position_conv.py's
+BALANCED_SPLIT, for example, puts NLoS_L in the test set and scores
+AUROC=0.419 there, worse than chance, which no threshold-based
+postprocessing can fix. Averaging metrics across folds distinguishes an
+unlucky split from a genuine generalization problem, and is the
+methodology expected at this sample size.
 
 4 folds, one per non-empty-room activity (EN-S, EN-W, L, S) held out as
 test in turn -- E is never held out, so every fold's training set always
@@ -18,10 +18,10 @@ why that invariant matters). Each fold:
              + presence-threshold calibration -- never the test activity)
     train = the remaining 6 sessions (always includes E)
 
-Reports presence_acc, presence AUROC (threshold-independent -- the metric
-that actually caught the NLoS_L failure), and position RMSE per fold, then
-mean +/- std across folds -- for both --model snn and --model ann, same
-config as train_presence_position_conv.py otherwise.
+Reports presence_acc, presence AUROC (threshold-independent -- surfaces
+failures raw accuracy would hide), and position RMSE per fold, then mean
++/- std across folds -- for both --model snn and --model ann, same config
+as train_presence_position_conv.py otherwise.
 
 Run:
     .venv/bin/python scripts/train_presence_position_cv.py --model snn
@@ -48,6 +48,7 @@ from snn_csi_tracking.data.dataset import CSIDataset
 from snn_csi_tracking.data.presence_position_dataset import load_or_build_perframe_dataset
 from snn_csi_tracking.data.raw_capture_loader import NUM_ANTENNAS
 from snn_csi_tracking.models.presence_position_ann import ANNPresencePositionConvPerFrame
+from snn_csi_tracking.models.presence_position_lstm import LSTMPresencePositionConvPerFrame
 from snn_csi_tracking.models.presence_position_snn import SNNPresencePositionConvPerFrame
 from snn_csi_tracking.training.train_presence_position_conv import (
     AMPLITUDE_NORM, BATCH_SIZE, CACHE_DIR, CONV_CHANNELS, DELTA_THRESHOLD, DEPTH_CACHE_DIR, HIDDEN_1,
@@ -86,7 +87,7 @@ def presence_auroc(pres_pred: torch.Tensor, pres_gt: torch.Tensor) -> float:
     probs = torch.sigmoid(pres_pred).cpu().numpy().ravel()
     gt = pres_gt.cpu().numpy().ravel()
     if len(set(gt)) < 2:
-        return float("nan")  # single-class session -- ranking metric undefined, see conversation
+        return float("nan")  # single-class session: AUROC is undefined
     return roc_auc_score(gt, probs)
 
 
@@ -109,8 +110,18 @@ def run_fold(model_type: str, X, pos, present, groups, test_activity: str, val_a
             h1=HIDDEN_1, h2=HIDDEN_2, out_dim=out_dim, kernel_size=KERNEL_SIZE, delta_threshold=DELTA_THRESHOLD,
             encoder_type=encoder_type, num_static_channels=num_static_channels,
         ).to(DEVICE)
-    else:
+    elif model_type == "ann":
         model = ANNPresencePositionConvPerFrame(
+            num_channels=X.shape[1], num_subcarriers=X.shape[2], conv_channels=CONV_CHANNELS,
+            h1=HIDDEN_1, h2=HIDDEN_2, out_dim=out_dim, kernel_size=KERNEL_SIZE,
+        ).to(DEVICE)
+    else:
+        # lstm -- same conv frontend/layer sizes as the ANN twin (see
+        # models/presence_position_lstm.py). No encoder_type/num_static_channels
+        # (those are SNN-only options). Uses the same calibrated-threshold
+        # presence_acc metric as SNN/ANN, rather than uncalibrated balanced
+        # accuracy.
+        model = LSTMPresencePositionConvPerFrame(
             num_channels=X.shape[1], num_subcarriers=X.shape[2], conv_channels=CONV_CHANNELS,
             h1=HIDDEN_1, h2=HIDDEN_2, out_dim=out_dim, kernel_size=KERNEL_SIZE,
         ).to(DEVICE)
@@ -152,18 +163,25 @@ def run_fold(model_type: str, X, pos, present, groups, test_activity: str, val_a
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", choices=["snn", "ann"], required=True)
+    parser.add_argument("--model", choices=["snn", "ann", "lstm"], required=True)
     parser.add_argument("--rate-ms", type=int, default=RATE_MS, help="capture rate: 5, 10, 50, or 100")
     parser.add_argument("--t-win", type=int, default=T_WIN, help="window length in frames")
     parser.add_argument("--stride", type=int, default=STRIDE, help="window stride in frames")
     parser.add_argument("--feature", choices=["none", "relative_motion", "spectral_ratio", "cross_coherence",
-                                               "spectral_and_coherence", "both"], default="relative_motion",
+                                               "spectral_and_coherence", "both", "full", "relmot_and_coherence"],
+                         default="relative_motion",
                          help="which extra motion-derived channel(s) to use -- none (bare amplitude+phase, no "
                               "extra channel -- the true zero-feature-engineering baseline), relative_motion "
                               "(rolling-ratio), spectral_ratio (low/high frequency power ratio), cross_coherence "
                               "(magnitude-squared coherence between antenna pairs -- does structure AGREE across "
                               "independent sensors), spectral_and_coherence (both new features together), "
-                              "both (relative_motion + spectral_ratio)")
+                              "both (relative_motion + spectral_ratio), full (the complete Eq. (9) feature stack "
+                              "-- raw motion magnitude + relative motion + spectral ratio + cross-coherence "
+                              "together; implies --use-motion-magnitude, no need to pass it separately), "
+                              "relmot_and_coherence (relative_motion + cross_coherence together, nothing else -- "
+                              "AP+CC+MM's counterpart when normalized motion, not raw, wins the AP+MM vs "
+                              "AP+tilde_m comparison; note AP+CC+MM itself needs no new choice here, it's just "
+                              "--feature cross_coherence --use-motion-magnitude, since raw MM is independent)")
     parser.add_argument("--encoder", choices=["perframe", "timeaware"], default="perframe",
                          help="perframe: PerFrameConvEncoder (1D conv, one frame at a time, the original design). "
                               "timeaware: TimeAwareConvEncoder (real 2D conv across subcarrier AND several "
@@ -192,19 +210,20 @@ def main():
                               "[0,1] over the whole dataset -- RMSE stays comparable in scale to the 2D-only run")
     args = parser.parse_args()
     out_dim = 3 if args.use_3d else 2
-    use_relative_motion = args.feature in ("relative_motion", "both")
-    use_spectral_ratio = args.feature in ("spectral_ratio", "both", "spectral_and_coherence")
-    use_cross_coherence = args.feature in ("cross_coherence", "spectral_and_coherence")
+    use_relative_motion = args.feature in ("relative_motion", "both", "full", "relmot_and_coherence")
+    use_spectral_ratio = args.feature in ("spectral_ratio", "both", "spectral_and_coherence", "full")
+    use_cross_coherence = args.feature in ("cross_coherence", "spectral_and_coherence", "full", "relmot_and_coherence")
+    use_motion_magnitude = args.use_motion_magnitude or args.feature == "full"
 
     print(f"Loading dataset (amplitude_norm={AMPLITUDE_NORM}, rate_ms={args.rate_ms}, "
           f"t_win={args.t_win}, stride={args.stride}, window_duration={args.t_win * args.rate_ms / 1000:.2f}s, "
-          f"feature={args.feature}, use_motion_magnitude={args.use_motion_magnitude}, "
+          f"feature={args.feature}, use_motion_magnitude={use_motion_magnitude}, "
           f"use_3d={args.use_3d}, pinhole={args.pinhole})...")
     X, pos, present, groups, activity_codes = load_or_build_perframe_dataset(
         RAW_ROOT, TRAJECTORY_CACHE_DIR, DEPTH_CACHE_DIR, CACHE_DIR,
         rate_ms=args.rate_ms, t_win=args.t_win, stride=args.stride, use_3d=args.use_3d, pinhole=args.pinhole,
         use_phase=USE_PHASE,
-        use_empty_baseline=USE_EMPTY_BASELINE, denoise=None, use_motion_magnitude=args.use_motion_magnitude,
+        use_empty_baseline=USE_EMPTY_BASELINE, denoise=None, use_motion_magnitude=use_motion_magnitude,
         amplitude_norm=AMPLITUDE_NORM, use_relative_motion=use_relative_motion, use_spectral_ratio=use_spectral_ratio,
         use_cross_coherence=use_cross_coherence, use_baseline_deviation=args.baseline_deviation,
     )

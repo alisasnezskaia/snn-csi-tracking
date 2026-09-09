@@ -1,8 +1,8 @@
 """Build per-CSI-frame (x, y) position traces to support a motion/displacement
-regression target (not absolute position -- see conversation notes on why
-single-link CSI can't support fine-grained localization, and why "how much/
-fast is the person moving" is the more physically-grounded, more feasible
-target given the time budget).
+regression target rather than absolute position: single-link CSI amplitude
+cannot support fine-grained localization, so "how fast/much is the person
+moving" is the more physically grounded, feasible target given the time
+budget.
 
 For each trial in our existing 50ms training data (data/raw/{NLoS,PLoS}/csi_
 office_50ms_interframe.mat), find its matching raw session on the Drive

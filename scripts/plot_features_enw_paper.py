@@ -45,7 +45,7 @@ plt.rcParams.update({
     "font.size": 21,
     "axes.titlesize": 21,
     "axes.labelsize": 21,
-    "xtick.labelsize": 21,
+    "xtick.labelsize": 19,
     "ytick.labelsize": 19,
 })
 
@@ -81,18 +81,28 @@ def main():
 
         for a in range(3):
             ax_amp.plot(t_sec, feat[a].mean(axis=0), linewidth=1.4, label=f"antenna {a}")
+        ax_amp.set_xlim(0, 60)
         ax_amp.fill_between(t_sec, *ax_amp.get_ylim(), where=present > 0, color="tab:green", alpha=0.12,
                              step="mid", label="ground truth: present")
-        ax_amp.set_ylabel(f"{activity}\namplitude (a.u.)")
+        ax_amp.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda x, pos: f"{x * 100:.2f}"))
+        ax_amp.text(0.0, 1.02, r"$\times\,10^{-2}$", transform=ax_amp.transAxes,
+                    fontsize=19, ha="left", va="bottom")
+        ax_amp.grid(True, color="0.85", linewidth=0.6, zorder=0)
+        ax_amp.set_axisbelow(True)
+        ax_amp.set_ylabel(activity)
         if row == 0:
             legend_handles, legend_labels = ax_amp.get_legend_handles_labels()
-            ax_amp.set_title("Amplitude, subcarrier-averaged")
+            ax_amp.set_title("Amplitude, subcarrier-averaged", pad=32)
 
         ax_motion.plot(t_sec, motion, color="tab:orange", linewidth=1.4)
-        ax_motion.fill_between(t_sec, 0, motion.max() * 1.05, where=present > 0, color="tab:green",
+        ax_motion.set_xlim(0, 60)
+        ax_motion.set_ylim(0, 400)
+        ax_motion.fill_between(t_sec, 0, 400, where=present > 0, color="tab:green",
                                 alpha=0.12, step="mid")
+        ax_motion.grid(True, color="0.85", linewidth=0.6, zorder=0)
+        ax_motion.set_axisbelow(True)
         if row == 0:
-            ax_motion.set_title("Motion magnitude")
+            ax_motion.set_title("Motion magnitude", pad=32)
 
         ax_amp.set_xlabel("time (s)")
         ax_motion.set_xlabel("time (s)")
@@ -103,9 +113,9 @@ def main():
 
     out_dir = REPO_ROOT / "results" / "figures"
     out_dir.mkdir(parents=True, exist_ok=True)
-    plt.savefig(out_dir / "features_enw_paper.png", dpi=200, bbox_inches="tight")
-    plt.savefig(out_dir / "features_enw_paper.pdf", bbox_inches="tight")
-    print(f"saved to {out_dir / 'features_enw_paper.png'} and .pdf")
+    plt.savefig(out_dir / "features_enw_paper_v2.png", dpi=200, bbox_inches="tight")
+    plt.savefig(out_dir / "features_enw_paper_v2.pdf", bbox_inches="tight")
+    print(f"saved to {out_dir / 'features_enw_paper_v2.png'} and .pdf")
 
 
 if __name__ == "__main__":

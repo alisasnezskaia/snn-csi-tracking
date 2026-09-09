@@ -126,7 +126,7 @@ def build_datasets_grouped(
     set. This is the honest-evaluation split: a model can't score well by
     keying off one trial's session-specific hardware-drift/background
     fingerprint, since that fingerprint never appears on both sides of the
-    split (see conversation notes on why the chronological split leaks it).
+    split (unlike a chronological split, which leaks it).
 
     `strata`: optional per-window array (same length as `groups`, constant
     within a trial -- e.g. activity code) used to split each stratum's

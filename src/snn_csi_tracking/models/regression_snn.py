@@ -1,11 +1,11 @@
 """Conv frontend (per-frame frequency features) + spiking backend, regression head.
 
-Architecture for the motion/displacement regression task (see conversation
-notes: absolute (x,y) position isn't reliably recoverable from a single
-3-antenna link, so the target is "how much/fast is the person moving" instead).
+Architecture for the motion/displacement regression task: absolute (x,y)
+position isn't reliably recoverable from a single 3-antenna link, so the
+target is "how much/fast is the person moving" instead.
 
-Two design choices carried over from the classification-architecture
-discussion, both deliberate:
+Two deliberate design choices, carried over from the presence/position
+classification architecture:
 
 1. The conv only looks at ONE frame at a time (subcarrier axis only, time axis
    untouched) -- unlike Wi-Spike's joint spatio-temporal spiking conv, which
@@ -64,15 +64,15 @@ class PerFrameConvEncoder(nn.Module):
 class TimeAwareConvEncoder(nn.Module):
     """Like PerFrameConvEncoder, but a genuine 2D conv spanning BOTH the
     subcarrier axis AND several adjacent TIMESTEPS jointly, instead of
-    treating every frame independently -- see conversation: this was the
-    single best lever found across the whole investigation when tested as
-    a standalone presence classifier (image_cnn_presence.py,
-    AUROC=0.650+/-0.135, best fold 0.802), because it lets one convolution
-    directly correlate a short stretch of time with a band of frequencies,
-    something PerFrameConvEncoder structurally cannot do (it only combines
-    time information afterward, slowly, through whatever recurrence sits
-    downstream). This integrates that same idea as a DROP-IN replacement
-    for PerFrameConvEncoder -- same (batch, T, NumAntennas, NumSubcarriers)
+    treating every frame independently. Standalone presence-classifier
+    experiments (image_cnn_presence.py, AUROC=0.650+/-0.135, best fold
+    0.802) found this the strongest single lever tried, because it lets
+    one convolution directly correlate a short stretch of time with a
+    band of frequencies, something PerFrameConvEncoder structurally
+    cannot do (it only combines time information afterward, slowly,
+    through whatever recurrence sits downstream). This integrates that
+    same idea as a DROP-IN replacement for PerFrameConvEncoder -- same
+    (batch, T, NumAntennas, NumSubcarriers)
     input, same (batch, T, out_features) output -- so it plugs into the
     real dual-head (presence+position) architecture instead of only being
     tested in isolation.

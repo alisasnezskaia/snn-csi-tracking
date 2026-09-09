@@ -114,8 +114,8 @@ def hampel_filter_depth(depth_raw: np.ndarray, max_segment_len: int = 60, jump_m
     """Removes short depth 'islands' bracketed by abrupt jumps on both
     sides, replacing them with NaN and linearly interpolating over the gap.
 
-    Motivated by an observed failure mode (see conversation): during a fast
-    pose transition, MediaPipe's tracked landmark can briefly drift off the
+    Motivated by an observed failure mode: during a fast pose transition,
+    MediaPipe's tracked landmark can briefly drift off the
     person's body onto a background wall for ~10-30 frames before snapping
     back -- (x, y) stays smooth throughout (no xy jump to catch), but depth
     cliffs to the wall's unrelated depth, plateaus, then cliffs back.

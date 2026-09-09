@@ -140,10 +140,10 @@ class SNNPresencePositionConvPerFrame(nn.Module):
     giving every subcarrier x channel x hidden-unit combination its own
     independent weight -- this pipeline's flat fc1 massively overparameterizes
     the first layer relative to available data, which is exactly what made
-    the CIR/delta-rate feature additions overfit so badly (see conversation).
-    A conv also encodes the physical prior that neighboring subcarriers have
-    correlated channel response, which a flat Linear layer has no choice but
-    to re-learn from scratch, needing far more data to do it reliably.
+    the CIR/delta-rate feature additions overfit so badly. A conv also
+    encodes the physical prior that neighboring subcarriers have correlated
+    channel response, which a flat Linear layer has no choice but to
+    re-learn from scratch, needing far more data to do it reliably.
 
     Unlike SNNPresencePositionPerFrame (fed pre-computed spikes via
     to_spikes), this takes raw per-frame features directly and does the
@@ -157,43 +157,43 @@ class SNNPresencePositionConvPerFrame(nn.Module):
     Lempitsky, 2015) off the same shared spk2 representation the presence/
     position heads use -- a small classifier predicting WHICH training
     session produced a window, wired through grad_reverse so the shared
-    trunk is penalized for making that easy. Built directly in response to
-    a diagnosed failure mode (see conversation): leave-activity-out cross-
-    validation measured presence AUROC~0.508 (chance) with very low
-    variance across every fold, consistent with the trunk encoding session
-    identity rather than genuine occupancy. When num_domains is None
-    (default), this is inert -- forward() behaves exactly as before, so
-    existing checkpoints/callers are unaffected.
+    trunk is penalized for making that easy. Motivated by a diagnosed
+    failure mode: leave-activity-out cross-validation measured presence
+    AUROC~0.508 (chance) with very low variance across every fold,
+    consistent with the trunk encoding session identity rather than
+    genuine occupancy. When num_domains is None (default), this is inert
+    -- forward() behaves exactly as before, so existing checkpoints/callers
+    are unaffected.
 
     predict_los (optional): adds a THIRD head predicting LoS/NLoS (shield
     present or not) off the same shared spk2 representation, and gates the
     position output by the presence head's own probability -- final
     position = sigmoid(presence_logit) * raw_position, so a window the
     model itself believes is empty reports a near-zero position rather than
-    a spurious value. Built in direct response to a diagnosed confound (see
-    conversation): the >4x noise-floor gap measured between NLoS_E and
-    PLoS_E (same activity, same ground truth) is a STRUCTURED, already-
-    labeled difference (shield blocks the direct path or doesn't), not
-    unexplained per-session drift -- every leave-activity-out CV fold mixed
-    both conditions across train/val/test without ever telling the model
-    which propagation regime applied, asking it to learn one unified
-    mapping across two physically different regimes at once. Making LoS/
-    NLoS an explicit auxiliary output (rather than either ignoring it or
-    training two fully separate per-condition models) keeps a single shared
-    backbone while still letting the network structure its representation
-    around the condition. Default False is inert -- forward() behaves
-    exactly as before.
+    a spurious value. Motivated by a diagnosed confound: the >4x
+    noise-floor gap measured between NLoS_E and PLoS_E (same activity,
+    same ground truth) is a STRUCTURED, already-labeled difference (shield
+    blocks the direct path or doesn't), not unexplained per-session drift
+    -- every leave-activity-out CV fold mixed both conditions across
+    train/val/test without ever telling the model which propagation regime
+    applied, asking it to learn one unified mapping across two physically
+    different regimes at once. Making LoS/NLoS an explicit auxiliary
+    output (rather than either ignoring it or training two fully separate
+    per-condition models) keeps a single shared backbone while still
+    letting the network structure its representation around the
+    condition. Default False is inert -- forward() behaves exactly as
+    before.
 
-    Measured empirically NOT to work well (see conversation): the LoS/NLoS
-    auxiliary head only reached 0.588+/-0.104 accuracy on a binary task
-    (0.5 = chance) -- trying to recover a STATIC channel property from deep
-    inside a pipeline built entirely around DYNAMIC, delta-encoded, motion-
-    based features fights the architecture. A trivial logistic regression
-    on the time-averaged raw amplitude spectrum (no motion features at all)
-    got 100% accuracy on the identical leave-activity-out folds. Use
-    `condition_embed_dim` below instead -- feed that (essentially free,
-    always-correct) condition in as a KNOWN INPUT rather than asking this
-    model to infer it as an output.
+    Measured to not work well: the LoS/NLoS auxiliary head only reached
+    0.588+/-0.104 accuracy on a binary task (0.5 = chance) -- recovering a
+    STATIC channel property from deep inside a pipeline built entirely
+    around DYNAMIC, delta-encoded, motion-based features fights the
+    architecture. A trivial logistic regression on the time-averaged raw
+    amplitude spectrum (no motion features at all) got 100% accuracy on
+    the identical leave-activity-out folds. Use `condition_embed_dim`
+    below instead -- feed that (essentially free, always-correct)
+    condition in as a KNOWN INPUT rather than asking this model to infer
+    it as an output.
 
     condition_embed_dim (optional): learned nn.Embedding(2, dim) for the
     LoS/NLoS condition, concatenated to the delta-encoded spike vector at
@@ -204,19 +204,19 @@ class SNNPresencePositionConvPerFrame(nn.Module):
     num_static_channels (optional): the LAST `num_static_channels` channels
     of `windows` are treated as a STATIC presence signal (e.g.
     presence_position_dataset.empty_baseline_deviation_feature) instead of
-    a dynamic/motion one, and bypass delta-encoding entirely -- see
-    conversation: EVERY feature in this model, without this, gets
-    `torch.diff`'d against the previous timestep before the LIF layers ever
-    see it (see forward()) -- exactly right for motion features, but it
-    means a constant-over-time "a body is physically here right now" signal
-    (from a person sitting still) diffs to ~zero and is structurally
-    invisible to the network, no matter how good the raw feature is. This
-    routes those channels through their own small conv encoder (no time
-    mixing needed -- see `static_conv_channels`) and concatenates the RAW
-    per-timestep output straight into the LIF input alongside the spikes,
-    the same "concatenate a raw, non-spike-encoded vector every timestep"
-    pattern already used above for condition_embed_dim. Default 0 is inert
-    -- forward() behaves exactly as before.
+    a dynamic/motion one, and bypass delta-encoding entirely. Every other
+    feature in this model gets `torch.diff`'d against the previous
+    timestep before the LIF layers ever see it (see forward()) -- exactly
+    right for motion features, but it means a constant-over-time "a body
+    is physically here right now" signal (from a person sitting still)
+    diffs to ~zero and is structurally invisible to the network, no matter
+    how good the raw feature is. This routes those channels through their
+    own small conv encoder (no time mixing needed -- see
+    `static_conv_channels`) and concatenates the RAW per-timestep output
+    straight into the LIF input alongside the spikes, the same
+    "concatenate a raw, non-spike-encoded vector every timestep" pattern
+    already used above for condition_embed_dim. Default 0 is inert --
+    forward() behaves exactly as before.
     """
 
     def __init__(
@@ -245,25 +245,23 @@ class SNNPresencePositionConvPerFrame(nn.Module):
             self.conv_encoder = PerFrameConvEncoder(num_dynamic_channels, num_subcarriers, conv_channels, kernel_size)
         elif encoder_type == "timeaware":
             # real 2D conv across subcarrier AND time jointly -- see
-            # TimeAwareConvEncoder's docstring; this was the single best
-            # lever found in the whole investigation as a standalone
-            # presence classifier (AUROC=0.650+/-0.135), tested here
-            # integrated into the actual dual-head architecture instead of
-            # in isolation.
+            # TimeAwareConvEncoder's docstring; the strongest standalone
+            # presence classifier tried (AUROC=0.650+/-0.135), integrated
+            # here into the actual dual-head architecture instead of
+            # tested in isolation.
             self.conv_encoder = TimeAwareConvEncoder(num_dynamic_channels, num_subcarriers, conv_channels, sub_kernel=kernel_size)
         else:
             raise ValueError(f"unknown encoder_type: {encoder_type!r}")
         self.delta_threshold = delta_threshold
         # Straight-through surrogate gradient (snntorch's own fast_sigmoid,
         # already used elsewhere in this codebase for LIF spiking -- see
-        # regression_snn.CSIConvSpikingRegressor) -- see conversation: the
-        # plain `(diff >= threshold).float()` comparison this replaces has
-        # EXACTLY ZERO gradient (confirmed empirically: conv_encoder's
-        # weight.grad was None after a full forward+backward pass), so
-        # conv_encoder never trained at all, stuck at random init for every
-        # SNN experiment run before this fix. Forward pass is unchanged
-        # (still a hard threshold, still binary spikes); only the backward
-        # pass differs, letting gradient reach the conv for the first time.
+        # regression_snn.CSIConvSpikingRegressor). The plain
+        # `(diff >= threshold).float()` comparison it replaces has exactly
+        # zero gradient (conv_encoder's weight.grad was None after a full
+        # forward+backward pass), so conv_encoder never trained at all,
+        # stuck at random init. Forward pass is unchanged (still a hard
+        # threshold, still binary spikes); only the backward pass differs,
+        # letting gradient reach the conv.
         self.spike_grad = surrogate.fast_sigmoid()
         self.condition_embedding = nn.Embedding(2, condition_embed_dim) if condition_embed_dim else None
 

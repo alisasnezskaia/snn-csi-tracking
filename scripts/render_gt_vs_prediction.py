@@ -4,13 +4,13 @@ convention as render_ground_truth_check.py, but comparing the trained
 model's presence output against ground truth instead of two labeling
 schemes against each other).
 
-Built to directly verify the presence-flicker-during-sitting failure mode
-(see conversation): the L activity's ground truth says "present" through
-the whole sitting stretch, but every motion-based feature this pipeline
-uses goes quiet once the person stops moving, so the model's own
-prediction should visibly disagree with ground truth exactly there --
-this makes that failure (and any fix's effect on it) directly watchable
-rather than just a number in a CV table.
+Built to directly verify the presence-flicker-during-sitting failure mode:
+the L activity's ground truth says "present" through the whole sitting
+stretch, but every motion-based feature this pipeline uses goes quiet once
+the person stops moving, so the model's own prediction should visibly
+disagree with ground truth exactly there -- this makes that failure (and
+any fix's effect on it) directly watchable rather than just a number in a
+CV table.
 
 Run:
     .venv/bin/python scripts/render_gt_vs_prediction.py --trial PLoS_L_capture1 \\
