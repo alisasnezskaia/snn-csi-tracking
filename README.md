@@ -16,7 +16,9 @@ Requires Python ≥ 3.10. Core dependencies: PyTorch, [snnTorch](https://snntorc
 
 ## Data
 
-Not included in this repository. The pipeline expects raw CSI captures and matching videos under `data/raw_captures/`, one folder per `{condition}_{activity}` combination:
+Not included in this repository. The raw CSI captures and videos are published separately on Zenodo: https://zenodo.org/records/21335109
+
+The pipeline expects that data laid out under `data/raw_captures/`, one folder per `{condition}_{activity}` combination:
 
 ```
 data/raw_captures/
